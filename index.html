@@ -168,6 +168,11 @@ details.settings summary { cursor: pointer; font-weight: 600; font-size: .9rem; 
 .help { font-size: .82rem; color: var(--muted); margin: 0; }
 .confirm { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 8px; background: var(--bad-bg); color: var(--bad); font-size: .9rem; }
 .confirm span { flex: 1 1 200px; }
+.of-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.of-chip { font: 500 .8rem var(--font-mono); padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.of-chip.cur { border-color: var(--ink); background: var(--yellow); color: var(--yellow-ink); font-weight: 600; }
+.fix-of { display: grid; gap: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.confirm.ok-box { background: var(--ok-bg); color: var(--ok); }
 @media (prefers-reduced-motion: no-preference) { .flash { animation: flash .5s ease-out; } @keyframes flash { from { box-shadow: 0 0 0 4px var(--yellow); } to { box-shadow: 0 0 0 0 transparent; } } }
 </style>
 
@@ -213,7 +218,14 @@ details.settings summary { cursor: pointer; font-weight: 600; font-size: .9rem; 
         <input id="ofInput" class="big-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ex. 4500123456">
         <button class="btn-primary" id="startBtnHEN" type="button">Commencer le scan</button>
       </div>
-      <p class="help">Pas de nombre de palettes à fixer : scannez toutes les palettes du départ. Le N° de fiche / OF apparaît dans la 1<sup>re</sup> colonne de l'Excel.</p>
+      <p class="help" id="helpHEN">Pas de nombre de palettes à fixer : scannez toutes les palettes du départ. Le N° de fiche / OF apparaît dans la 1<sup>re</sup> colonne de l'Excel.</p>
+      <div class="fix-of" id="fixOfBox" hidden>
+        <p class="help" id="fixOfHelp"></p>
+        <div class="actions">
+          <button class="btn-sm" id="fixOfBtn" type="button"></button>
+          <button class="btn-sm btn-ghost" id="cancelEditBtn" type="button">Annuler</button>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -225,6 +237,7 @@ details.settings summary { cursor: pointer; font-weight: 600; font-size: .9rem; 
     <div class="progress" id="progress">
       <div class="progress-top"><span class="progress-num" id="progNum"></span><span id="progLeft" class="progress-left"></span></div>
       <div class="bar" id="progBarWrap"><div class="bar-fill" id="progBar"></div></div>
+      <div class="of-chips" id="ofChips" hidden></div>
     </div>
     <label class="btn btn-yellow live-btn photo-btn" for="photoInput">
       <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -392,11 +405,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       unit: "départ", resetLabel: "Nouveau départ", listTitle: "Départ",
       head: ["N° fiche / OF", "Code barre 1", "Code barre 1", "Code barre 2", "aaaammjjhh"],
       widths: [18, 30, 30, 42, 20],
-      row: (p) => [state.of, p.c1, p.c1, p.c2, p.c4],
+      row: (p) => [p.of || state.of, p.c1, p.c1, p.c2, p.c4],
       sheet: "Départ",
-      file: () => "depart_HENNESSY_" + safeName(state.of) + "_" + dateDDMMYYYY(todayISO()) + ".xlsx",
-      subject: () => "Départ HENNESSY - OF " + state.of + " - " + state.pallets.length + " palette(s)",
-      body: () => "Ci-joint le départ HENNESSY, fiche / OF " + state.of + " : " + state.pallets.length + " palette(s).",
+      file: () => "depart_HENNESSY_" + ofList().map(safeName).join("_").slice(0, 80) + "_" + dateDDMMYYYY(todayISO()) + ".xlsx",
+      subject: () => "Départ HENNESSY - OF " + ofList().join(", ") + " - " + state.pallets.length + " palette(s)",
+      body: () => "Ci-joint le départ HENNESSY : " + state.pallets.length + " palette(s).\n" + ofList().map((o) => "- Fiche / OF " + o + " : " + ofCount(o) + " palette(s)").join("\n"),
       rules: "Départ HENNESSY : le code-barres le plus haut sur l'étiquette est le code barre 1, celui en dessous le code barre 2 (à la douchette : dans l'ordre de scan). Une fiche déjà scannée (mêmes codes, ou même SSCC) est refusée."
     }
   };
@@ -457,7 +470,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function refuse(msg) { setStatus(msg, "bad"); beep(false); }
   function notReadyMsg() { return state.mode === "GG" ? "Indiquez d'abord le nombre de palettes du camion." : "Indiquez d'abord le N° de fiche / OF."; }
   function fullMsg() { return "Camion complet (" + state.pallets.length + "/" + expected() + ") : impossible d'ajouter une palette. Si le bon est faux, touchez « Modifier »."; }
-  function dupMsg(i) { return "Fiche déjà scannée : c'est la palette n° " + (i + 1) + ". Elle n'est pas ajoutée une 2e fois."; }
+  function dupMsg(i) { const o = state.mode === "HEN" && state.pallets[i].of ? " (OF " + state.pallets[i].of + ")" : ""; return "Fiche déjà scannée : c'est la palette n° " + (i + 1) + o + ". Elle n'est pas ajoutée une 2e fois."; }
+  // OF de chaque palette (départ HENNESSY) : une palette garde l'OF qui était en cours quand elle a été scannée
+  function ofList() { const l = []; state.pallets.forEach((p) => { const o = p.of || state.of; if (o && !l.includes(o)) l.push(o); }); return l.length ? l : (state.of ? [state.of] : []); }
+  function ofCount(o) { return state.pallets.filter((p) => (p.of || state.of) === o).length; }
   function countTxt() { return expected() ? state.pallets.length + "/" + expected() : String(state.pallets.length); }
 
   // ---- Ajout d'un code (douchette / saisie) ----
@@ -499,6 +515,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (curEmpty()) { setStatus("La palette en cours est vide.", "warn"); return false; }
     if (isFull()) { refuse(fullMsg()); return false; }
     const row = { c1: c.c1, c2: c.c2, c3: state.mode === "GG" ? c.c3 : "", c4: stamp(), t: Date.now() };
+    if (state.mode === "HEN") row.of = state.of;
     const d = dupIndex(keyOf(row));
     if (d >= 0) { state.cur = emptyPallet(); save(); render(); refuse(dupMsg(d)); return false; }
     state.pallets.push(row);
@@ -539,11 +556,27 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     });
     $("setupGG").hidden = setupMode !== "GG";
     $("setupHEN").hidden = setupMode !== "HEN";
-    $("h-setup").textContent = editingSetup ? (setupMode === "GG" ? "Nombre de palettes" : "N° de fiche / OF") : "Nouveau scan";
+    $("h-setup").textContent = editingSetup ? (setupMode === "GG" ? "Nombre de palettes" : "Changer de fiche / OF") : "Nouveau scan";
+    const curOfCount = state.of ? ofCount(state.of) : 0;
+    const editHEN = editingSetup && setupMode === "HEN" && state.pallets.length > 0;
+    $("helpHEN").textContent = editHEN
+      ? "Saisissez le nouveau N° de fiche / OF : les palettes suivantes seront rattachées à cet OF. Les " + state.pallets.length + " palette(s) déjà scannée(s) gardent leur OF."
+      : "Pas de nombre de palettes à fixer : scannez toutes les palettes du départ. Le N° de fiche / OF apparaît dans la 1re colonne de l'Excel.";
+    $("fixOfBox").hidden = !editingSetup || setupMode !== "HEN";
+    $("fixOfBtn").hidden = !curOfCount;
+    $("fixOfBtn").textContent = "Corriger une erreur : renommer l'OF " + state.of + " (" + curOfCount + " palette(s))";
+    $("fixOfHelp").textContent = curOfCount ? "OF mal saisi ? Tapez le bon numéro puis « Corriger une erreur » : il remplace " + state.of + " sur les palettes déjà scannées avec cet OF." : "";
     ["startBtnGG", "startBtnHEN"].forEach((id) => { $(id).textContent = editingSetup ? "Enregistrer" : "Commencer le scan"; });
     if (setupOpen && document.activeElement !== $("expectedInput")) $("expectedInput").value = state.expected || "";
     if (setupOpen && document.activeElement !== $("ofInput")) $("ofInput").value = state.of || "";
-    $("editSetupBtn").textContent = state.mode === "GG" ? "Modifier le nombre" : "Modifier l'OF";
+    $("editSetupBtn").textContent = state.mode === "GG" ? "Modifier le nombre" : "Changer d'OF";
+    if (editingSetup && setupMode === "HEN" && state.pallets.length) $("startBtnHEN").textContent = "Passer à cet OF";
+    const oc = $("ofChips"); oc.textContent = "";
+    oc.hidden = state.mode !== "HEN" || !state.pallets.length;
+    if (!oc.hidden) ofList().concat(ofList().includes(state.of) ? [] : [state.of]).forEach((o) => {
+      const c = document.createElement("span"); c.className = "of-chip" + (o === state.of ? " cur" : "");
+      c.textContent = "OF " + o + " : " + ofCount(o) + " pal." + (o === state.of ? " (en cours)" : ""); oc.appendChild(c);
+    });
 
     // progression
     const exp = expected(), done = state.pallets.length;
@@ -551,7 +584,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     $("progBarWrap").hidden = !exp;
     $("progBar").style.width = exp ? Math.min(100, done / exp * 100) + "%" : "0";
     $("progress").classList.toggle("done", !!exp && done >= exp);
-    $("progLeft").textContent = exp ? (done >= exp ? "Camion complet ✓" : "Reste " + (exp - done) + " palette(s)") : (state.mode === "HEN" ? "OF " + state.of : "");
+    $("progLeft").textContent = exp ? (done >= exp ? "Camion complet ✓" : "Reste " + (exp - done) + " palette(s)") : (state.mode === "HEN" ? "OF en cours : " + state.of : "");
     $("curNum").textContent = "n° " + (done + 1);
     if (!$("status").textContent) setStatus("Prêt. Touchez « Photographier l'étiquette » : les " + keys().length + " codes sont lus et la palette s'enregistre seule.", "");
 
@@ -634,6 +667,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       y.onclick = () => { confirmMode = null; render(); doExport(); };
       const n = document.createElement("button"); n.className = "btn-sm"; n.textContent = "Continuer le scan";
       n.onclick = () => { confirmMode = null; render(); };
+      cb.append(s, y, n);
+    } else if (confirmMode === "share" && pendingShare) {
+      cb.hidden = false; cb.className = "confirm ok-box"; cb.textContent = "";
+      const s = document.createElement("span"); s.textContent = "Le fichier Excel est prêt.";
+      const y = document.createElement("button"); y.className = "btn-sm btn-primary"; y.textContent = "Ouvrir l'e-mail avec le fichier";
+      y.onclick = () => { const ps = pendingShare; pendingShare = null; confirmMode = null; render(); shareFile(ps.file, ps.note); };
+      const n = document.createElement("button"); n.className = "btn-sm"; n.textContent = "Annuler";
+      n.onclick = () => { pendingShare = null; confirmMode = null; render(); };
       cb.append(s, y, n);
     } else { cb.hidden = true; cb.textContent = ""; }
   }
@@ -954,25 +995,45 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const pendingNote = !curEmpty() ? " Attention : la palette en cours n'est pas validée et n'est pas dans le fichier." : "";
     const name = fileName();
     let buf = prepared.sig === sig() ? prepared.buf : null;
+    const wasReady = !!buf;
     if (!buf) { try { buf = await buildXlsx(); } catch (e) { setStatus("Impossible de créer le fichier Excel.", "bad"); return; } }
-    if (state.settings.autoMail && state.settings.relay) sendViaRelay(buf, name);
 
-    const file = new File([buf], name, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-    // Téléphone : ouvre le partage -> choisir Mail / Gmail / Outlook, le fichier est déjà joint
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: subject(), text: "Bonjour,\n\n" + M().body() + "\n\nDestinataires : " + EMAIL_TO });
-        setStatus("E-mail préparé avec " + name + ". Destinataires à mettre : " + EMAIL_TO + " (bouton « Copier les adresses »)." + pendingNote, "ok");
-      } catch (e) {
-        if (e && e.name === "AbortError") setStatus("Envoi annulé." + pendingNote, "warn");
-        else { downloadFile(buf, name); openMailto(name); setStatus("Fichier téléchargé et e-mail ouvert : joignez " + name + "." + pendingNote, "warn"); }
-      }
+    // Service d'envoi configuré : le fichier part directement aux destinataires, sans ouvrir la messagerie
+    if (state.settings.autoMail && state.settings.relay) {
+      setStatus("Envoi en cours à " + EMAIL_TO + "…", "");
+      await sendViaRelay(buf, name);
       return;
     }
-    // Ordinateur : téléchargement + e-mail pré-rempli
+
+    const file = new File([buf], name, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    let canShareFile = false;
+    try { canShareFile = !!(navigator.canShare && navigator.canShare({ files: [file] })); } catch (e) {}
+    if (canShareFile) {
+      // le menu de partage doit s'ouvrir tout de suite après l'appui : sinon on redemande un appui
+      if (!wasReady) { offerShare(file, pendingNote); return; }
+      await shareFile(file, pendingNote);
+      return;
+    }
+    // Le téléphone refuse de joindre le fichier automatiquement : téléchargement + e-mail pré-rempli
     downloadFile(buf, name);
     openMailto(name);
-    setStatus("Fichier " + name + " téléchargé et e-mail ouvert pour " + EMAIL_TO + " : joignez le fichier depuis Téléchargements." + pendingNote, "ok");
+    const why = /^(file|content):$/.test(location.protocol)
+      ? "L'application est ouverte depuis un fichier : le téléphone ne permet pas de joindre l'Excel automatiquement. Ouvrez-la depuis son lien internet."
+      : "Ce téléphone n'autorise pas une page web à joindre un fichier Excel (c'est le cas de Chrome sur Android).";
+    setStatus(why + " Le fichier " + name + " est téléchargé : joignez-le à l'e-mail. Pour un envoi 100 % automatique, configurez le service d'envoi dans Réglages." + pendingNote, "warn");
+  }
+
+  let pendingShare = null;
+  function offerShare(file, note) { pendingShare = { file, note }; confirmMode = "share"; render(); $("confirmBox").scrollIntoView({ block: "center" }); }
+  async function shareFile(file, note) {
+    try {
+      await navigator.share({ files: [file], title: subject(), text: "Bonjour,\n\n" + M().body() + "\n\nDestinataires : " + EMAIL_TO });
+      setStatus("E-mail préparé avec " + file.name + ". Destinataires à mettre : " + EMAIL_TO + " (bouton « Copier les adresses »)." + note, "ok");
+    } catch (e) {
+      if (e && e.name === "AbortError") setStatus("Envoi annulé." + note, "warn");
+      else if (e && e.name === "NotAllowedError") offerShare(file, note);
+      else { downloadFile(await file.arrayBuffer(), file.name); openMailto(file.name); setStatus("Le partage a échoué : fichier téléchargé et e-mail ouvert, joignez " + file.name + "." + note, "warn"); }
+    }
   }
 
   function downloadFile(buf, name) {
@@ -992,7 +1053,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       const res = await fetch(state.settings.relay, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ key: RELAY_KEY, filename: name, subject: subject(), count: state.pallets.length, date: state.mode === "GG" ? dateDDMMYYYY(state.date) : "OF " + state.of, data: b64(buf) })
+        body: JSON.stringify({ key: RELAY_KEY, filename: name, subject: subject(), count: state.pallets.length, date: state.mode === "GG" ? dateDDMMYYYY(state.date) : "OF " + ofList().join(", "), data: b64(buf) })
       });
       const j = await res.json().catch(() => ({}));
       if (j.ok) { setStatus("E-mail envoyé à " + EMAIL_TO + " avec " + name + ".", "ok"); return true; }
@@ -1041,12 +1102,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     } else {
       const of = $("ofInput").value.trim();
       if (!of) { setStatus("Entrez le N° de fiche / OF.", "bad"); $("ofInput").focus(); return; }
+      // les palettes déjà scannées gardent leur OF
+      state.pallets.forEach((p) => { if (!p.of) p.of = state.of || of; });
+      if (editingSetup && of === state.of) { editingSetup = false; render(); setStatus("OF inchangé : " + of + ".", ""); return; }
+      if (editingSetup && !curEmpty()) { state.cur = emptyPallet(); }
       state.mode = "HEN"; state.of = of;
     }
     const wasEditing = editingSetup;
     editingSetup = false; save(); render();
     if (state.mode === "GG") setStatus(wasEditing ? "Nombre mis à jour : " + countTxt() + "." : "C'est parti : " + state.expected + " palette(s) à scanner.", "ok");
-    else setStatus(wasEditing ? "N° de fiche / OF mis à jour : " + state.of + "." : "C'est parti : départ HENNESSY, OF " + state.of + ".", "ok");
+    else setStatus(wasEditing ? "OF en cours : " + state.of + ". Les palettes précédentes gardent leur OF (" + ofList().filter((o) => o !== state.of).join(", ") + ")." : "C'est parti : départ HENNESSY, OF " + state.of + ".", "ok");
+    if (state.mode === "HEN" && wasEditing && !state.pallets.length) setStatus("OF en cours : " + state.of + ".", "ok");
     focusScan();
   }
   $("startBtnGG").onclick = startScan;
@@ -1057,6 +1123,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     editingSetup = true; pickedMode = state.mode; render();
     const el = state.mode === "GG" ? $("expectedInput") : $("ofInput"); el.focus(); el.select();
   };
+  $("fixOfBtn").onclick = () => {
+    const nv = $("ofInput").value.trim(), old = state.of;
+    if (!nv) { setStatus("Entrez le bon N° de fiche / OF.", "bad"); $("ofInput").focus(); return; }
+    if (nv === old) { setStatus("C'est déjà l'OF " + old + ".", "warn"); return; }
+    let n = 0;
+    state.pallets.forEach((p) => { if ((p.of || old) === old) { p.of = nv; n++; } });
+    state.of = nv; editingSetup = false; save(); render();
+    setStatus("OF corrigé : " + old + " → " + nv + " sur " + n + " palette(s).", "ok");
+  };
+  $("cancelEditBtn").onclick = () => { editingSetup = false; render(); };
   $("resetBtn").onclick = () => { confirmMode = "reset"; render(); };
   $("dateInput").onchange = (e) => { state.date = e.target.value || todayISO(); save(); render(); };
 
