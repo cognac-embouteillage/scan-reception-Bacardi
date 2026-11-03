@@ -724,7 +724,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       cb.hidden = false; cb.className = "confirm ok-box"; cb.textContent = "";
       const s = document.createElement("span"); s.textContent = "Le fichier Excel est prêt.";
       const y = document.createElement("button"); y.className = "btn-sm btn-primary"; y.textContent = "Ouvrir l'e-mail avec le fichier";
-      y.onclick = () => { const ps = pendingShare; pendingShare = null; confirmMode = null; render(); shareFile(ps.file, ps.note); };
+      y.onclick = () => { const ps = pendingShare; pendingShare = null; confirmMode = null; shareFile(ps.file, ps.note, true); render(); };
       const n = document.createElement("button"); n.className = "btn-sm"; n.textContent = "Annuler";
       n.onclick = () => { pendingShare = null; confirmMode = null; render(); };
       cb.append(s, y, n);
@@ -1220,12 +1220,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const file = new File([buf], name, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     let canShareFile = false;
     try { canShareFile = !!(navigator.canShare && navigator.canShare({ files: [file] })); } catch (e) {}
-    if (canShareFile) {
+    if (canShareFile && !state.settings.noShare) {
       // le menu de partage doit s'ouvrir tout de suite après l'appui : sinon on redemande un appui
       if (!wasReady) { offerShare(file, pendingNote); return; }
-      await shareFile(file, pendingNote);
+      await shareFile(file, pendingNote, false);
       return;
     }
+    if (canShareFile && state.settings.noShare) { fallbackMail(file, buf, pendingNote, true); return; }
     // Le téléphone refuse de joindre le fichier automatiquement : téléchargement + e-mail pré-rempli
     downloadFile(buf, name);
     openMailto(name);
@@ -1237,15 +1238,25 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   let pendingShare = null;
   function offerShare(file, note) { pendingShare = { file, note }; confirmMode = "share"; render(); $("confirmBox").scrollIntoView({ block: "center" }); }
-  async function shareFile(file, note) {
+  // fromTap = appelé directement depuis « Ouvrir l'e-mail avec le fichier » : si le téléphone refuse encore, on n'insiste pas
+  async function shareFile(file, note, fromTap) {
     try {
       await navigator.share({ files: [file], title: subject(), text: "Bonjour,\n\n" + mailBody() + "\n\nDestinataires : " + EMAIL_TO });
+      state.settings.noShare = false; save();
       setStatus("E-mail préparé avec " + file.name + ". Destinataires à mettre : " + EMAIL_TO + " (bouton « Copier les adresses »)." + note, "ok");
     } catch (e) {
-      if (e && e.name === "AbortError") setStatus("Envoi annulé." + note, "warn");
-      else if (e && e.name === "NotAllowedError") offerShare(file, note);
-      else { downloadFile(await file.arrayBuffer(), file.name); openMailto(file.name); setStatus("Le partage a échoué : fichier téléchargé et e-mail ouvert, joignez " + file.name + "." + note, "warn"); }
+      if (e && e.name === "AbortError") { setStatus("Envoi annulé." + note, "warn"); return; }
+      if (e && e.name === "NotAllowedError" && !fromTap) { offerShare(file, note); return; }
+      // Le téléphone refuse de joindre l'Excel : on s'en souvient pour ne plus proposer le partage sur cet appareil
+      state.settings.noShare = true; save();
+      fallbackMail(file, await file.arrayBuffer(), note, true);
     }
+  }
+  function fallbackMail(file, buf, note, refused) {
+    downloadFile(buf, file.name);
+    openMailto(file.name);
+    setStatus((refused ? "Votre téléphone refuse de joindre automatiquement un fichier Excel depuis l'application. " : "") +
+      "Le fichier " + file.name + " vient d'être téléchargé et l'e-mail est ouvert avec les destinataires : joignez le fichier (trombone → Téléchargements / Fichiers). Pour un envoi sans manipulation, installez le service d'envoi (Réglages)." + note, "warn");
   }
 
   function downloadFile(buf, name) {
