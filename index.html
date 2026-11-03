@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#ffe500">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Palettes GG">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>[hidden]{display:none!important}body{margin:0}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
 <title>Réception Palettes GG</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -172,6 +179,18 @@ details.settings summary { cursor: pointer; font-weight: 600; font-size: .9rem; 
 .of-chip { font: 500 .8rem var(--font-mono); padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
 .of-chip.cur { border-color: var(--ink); background: var(--yellow); color: var(--yellow-ink); font-weight: 600; }
 .fix-of { display: grid; gap: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.dmg-btn { width: 100%; color: var(--bad); border-color: var(--bad); background: transparent; }
+.dmg { border: 2px solid var(--bad); }
+.dmg h2 { color: var(--bad); }
+.dmg-id { font: 500 .85rem var(--font-mono); color: var(--muted); overflow-wrap: anywhere; margin: 0; }
+.thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.thumb { position: relative; aspect-ratio: 1; max-width: 100%; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: var(--bg); }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb button { position: absolute; top: 4px; right: 4px; min-height: 28px; padding: 2px 8px; font-size: .75rem; background: rgba(0,0,0,.65); color: #fff; border: none; }
+#dmgNote { width: 100%; min-height: 70px; font: 400 .95rem var(--font-body); padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); resize: vertical; }
+.dmg-tag { display: inline-block; font: 600 .68rem var(--font-body); text-transform: uppercase; letter-spacing: .05em; padding: 2px 6px; border-radius: 4px; background: var(--bad); color: #fff; margin-left: 6px; vertical-align: middle; }
+td.del { display: flex; gap: 4px; justify-content: flex-end; }
+td.del .dmg-row { color: var(--bad); }
 .confirm.ok-box { background: var(--ok-bg); color: var(--ok); }
 @media (prefers-reduced-motion: no-preference) { .flash { animation: flash .5s ease-out; } @keyframes flash { from { box-shadow: 0 0 0 4px var(--yellow); } to { box-shadow: 0 0 0 0 transparent; } } }
 </style>
@@ -252,7 +271,25 @@ details.settings summary { cursor: pointer; font-weight: 600; font-size: .9rem; 
         Caméra en direct
       </button>
     </div>
+    <label class="btn btn-sm dmg-btn photo-btn" id="dmgLastBtn" for="dmgInput">
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3 2 21h20z"/><path d="M12 10v5M12 18v.01"/></svg>
+      <span id="dmgLastTxt">Palette abîmée : photo de la dernière palette</span>
+    </label>
     <div id="status" class="status" role="status" aria-live="polite"></div>
+  </section>
+
+  <input id="dmgInput" type="file" accept="image/*" capture="environment" hidden>
+  <section class="panel dmg" id="dmgPanel" aria-labelledby="h-dmg" hidden>
+    <div class="panel-head"><h2 id="h-dmg">Palette abîmée</h2></div>
+    <p class="dmg-id" id="dmgId"></p>
+    <div class="thumbs" id="dmgThumbs"></div>
+    <label class="lbl" for="dmgNote">Commentaire (facultatif)</label>
+    <textarea id="dmgNote" placeholder="ex. film déchiré, carton écrasé côté droit, 2 bouteilles cassées"></textarea>
+    <div class="actions">
+      <label class="btn btn-yellow photo-btn" for="dmgInput" id="dmgMoreBtn">Ajouter une photo</label>
+      <button class="btn-primary" id="dmgDoneBtn" type="button">Terminé</button>
+    </div>
+    <button class="btn-sm btn-ghost" id="dmgRemoveBtn" type="button">Retirer le signalement de cette palette</button>
   </section>
 
   <section class="panel" aria-labelledby="h-cur" id="curPanel">
@@ -282,6 +319,7 @@ details.settings summary { cursor: pointer; font-weight: 600; font-size: .9rem; 
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18v12H3z"/><path d="m3 7 9 6 9-6"/></svg>
         Envoyer l'Excel par e-mail
       </button>
+      <button id="dlBtn" type="button">Télécharger l'Excel</button>
       <button id="copyMailBtn" type="button">Copier les adresses e-mail</button>
       <button id="copyBtn">Copier pour coller dans Excel</button>
       <button class="btn-danger" id="resetBtn">Nouveau camion</button>
@@ -516,6 +554,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (isFull()) { refuse(fullMsg()); return false; }
     const row = { c1: c.c1, c2: c.c2, c3: state.mode === "GG" ? c.c3 : "", c4: stamp(), t: Date.now() };
     if (state.mode === "HEN") row.of = state.of;
+    row.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const d = dupIndex(keyOf(row));
     if (d >= 0) { state.cur = emptyPallet(); save(); render(); refuse(dupMsg(d)); return false; }
     state.pallets.push(row);
@@ -639,15 +678,28 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     state.pallets.forEach((p, i) => {
       const tr = document.createElement("tr");
       tr.className = "row" + (flashRow && i === done - 1 ? " flash" : "");
-      [String(i + 1)].concat(m.row(p)).forEach((v, j) => { const td = document.createElement("td"); if (j === 0) td.className = "num"; td.textContent = v; tr.appendChild(td); });
+      [String(i + 1)].concat(m.row(p)).forEach((v, j) => {
+        const td = document.createElement("td"); if (j === 0) td.className = "num"; td.textContent = v;
+        if (j === 0 && p.dmg) { const tg = document.createElement("span"); tg.className = "dmg-tag"; tg.textContent = "abîmée"; td.appendChild(tg); }
+        tr.appendChild(td);
+      });
       const td = document.createElement("td"); td.className = "del";
+      const db = document.createElement("button"); db.type = "button"; db.className = "dmg-row";
+      db.textContent = p.dmg ? "Dégât (" + p.dmg.photos.length + ")" : "Dégât";
+      db.setAttribute("aria-label", "Palette " + (i + 1) + " abîmée : photos");
+      db.onclick = () => { if (p.dmg) openDmg(pid(p)); else { dmgTarget = pid(p); $("dmgInput").click(); } };
+      td.appendChild(db);
       const b = document.createElement("button"); b.type = "button"; b.textContent = "Supprimer"; b.setAttribute("aria-label", "Supprimer la palette " + (i + 1));
-      b.onclick = () => { state.pallets.splice(i, 1); save(); render(); setStatus("Palette " + (i + 1) + " supprimée.", "warn"); };
+      b.onclick = () => { dropDmgPhotos(p); state.pallets.splice(i, 1); if (dmgOpen === pid(p)) dmgOpen = null; save(); render(); setStatus("Palette " + (i + 1) + " supprimée.", "warn"); };
       td.appendChild(b); tr.appendChild(td);
       tb.appendChild(tr);
     });
     $("xlsxBtn").disabled = !done;
     $("copyBtn").disabled = !done;
+    $("dlBtn").disabled = !done;
+    $("dmgLastBtn").hidden = !done;
+    $("dmgLastTxt").textContent = "Palette abîmée : photo de la palette n° " + done;
+    renderDmg();
     prepare();
 
     // confirmations
@@ -656,7 +708,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       cb.hidden = false; cb.className = "confirm"; cb.textContent = "";
       const s = document.createElement("span"); s.textContent = "Effacer les " + done + " palette(s) de ce " + m.unit + " ? Pensez à envoyer l'Excel avant.";
       const y = document.createElement("button"); y.className = "btn-sm btn-danger"; y.textContent = "Oui, effacer";
-      y.onclick = () => { pickedMode = state.mode; state = newState(state.mode, state.settings); confirmMode = null; editingSetup = false; save(); setStatus("", ""); render(); };
+      y.onclick = () => { state.pallets.forEach(dropDmgPhotos); dmgOpen = null; pickedMode = state.mode; state = newState(state.mode, state.settings); confirmMode = null; editingSetup = false; save(); setStatus("", ""); render(); };
       const n = document.createElement("button"); n.className = "btn-sm"; n.textContent = "Annuler";
       n.onclick = () => { confirmMode = null; render(); };
       cb.append(s, y, n);
@@ -932,6 +984,164 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   };
   document.addEventListener("visibilitychange", () => { if (document.hidden && live.running) stopLive(); });
 
+
+  // ---- Palettes abîmées : photos rattachées à une palette ----
+  // Les photos sont gardées sur l'appareil (IndexedDB), réduites à 1600 px, et ajoutées dans un 2e onglet de l'Excel.
+  const pid = (p) => p.id || String(p.t);
+  let dmgTarget = null, dmgOpen = null;
+  const photoMem = new Map();
+  let idbP = null;
+  function idb() {
+    if (!idbP) idbP = new Promise((res) => {
+      try {
+        const r = indexedDB.open("scan-palettes-photos", 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("photos");
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => res(null);
+        r.onblocked = () => res(null);
+        setTimeout(() => res(null), 3000);
+      } catch (e) { res(null); }
+    });
+    return idbP;
+  }
+  async function photoPut(id, blob) {
+    photoMem.set(id, blob);
+    const db = await idb(); if (!db) return;
+    try { await new Promise((res, rej) => { const tx = db.transaction("photos", "readwrite"); tx.objectStore("photos").put(blob, id); tx.oncomplete = res; tx.onerror = rej; }); } catch (e) {}
+  }
+  function photoGet(id) {
+    return Promise.race([photoGet0(id), new Promise((r) => setTimeout(() => r(null), 4000))]);
+  }
+  async function photoGet0(id) {
+    if (photoMem.has(id)) return photoMem.get(id);
+    const db = await idb(); if (!db) return null;
+    try {
+      const b = await new Promise((res, rej) => { const rq = db.transaction("photos").objectStore("photos").get(id); rq.onsuccess = () => res(rq.result || null); rq.onerror = rej; });
+      if (b) photoMem.set(id, b);
+      return b;
+    } catch (e) { return null; }
+  }
+  async function photoDel(id) {
+    photoMem.delete(id);
+    const db = await idb(); if (!db) return;
+    try { db.transaction("photos", "readwrite").objectStore("photos").delete(id); } catch (e) {}
+  }
+  function dropDmgPhotos(p) { if (p && p.dmg) p.dmg.photos.forEach((ph) => photoDel(ph.id)); }
+  const palById = (id) => state.pallets.find((p) => pid(p) === id);
+  const palNum = (id) => state.pallets.findIndex((p) => pid(p) === id) + 1;
+
+  async function shrinkPhoto(file) {
+    const img = await loadImage(file);
+    const max = 1600, sc = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.round(img.naturalWidth * sc), h = Math.round(img.naturalHeight * sc);
+    const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+    cv.getContext("2d").drawImage(img, 0, 0, w, h);
+    const blob = await new Promise((res) => cv.toBlob(res, "image/jpeg", 0.72));
+    return { blob, w, h };
+  }
+
+  $("dmgLastBtn").addEventListener("click", () => { const p = state.pallets[state.pallets.length - 1]; dmgTarget = p ? pid(p) : null; });
+  $("dmgMoreBtn").addEventListener("click", () => { dmgTarget = dmgOpen; });
+  $("dmgInput").addEventListener("change", async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    const p = palById(dmgTarget);
+    if (!f || !p) return;
+    try {
+      const { blob, w, h } = await shrinkPhoto(f);
+      const id = pid(p) + "-" + Date.now().toString(36);
+      await photoPut(id, blob);
+      if (!p.dmg) p.dmg = { photos: [], note: "" };
+      p.dmg.photos.push({ id, w, h });
+      save();
+      openDmg(pid(p));
+      setStatus("Photo ajoutée à la palette n° " + palNum(pid(p)) + " (abîmée).", "warn");
+    } catch (err) {
+      setStatus("Impossible d'enregistrer cette photo (" + (err && err.message || err) + ").", "bad");
+    }
+  });
+
+  function openDmg(id) { dmgOpen = id; render(); $("dmgPanel").scrollIntoView({ block: "start" }); }
+  const thumbURLs = [];
+  async function renderDmg() {
+    const p = dmgOpen ? palById(dmgOpen) : null;
+    $("dmgPanel").hidden = !p;
+    if (!p) return;
+    const m = M();
+    $("h-dmg").textContent = "Palette abîmée n° " + palNum(dmgOpen);
+    $("dmgId").textContent = m.keys.map((k) => m.short[k] + " : " + (p[k] || "—")).join("  ·  ") + (p.of ? "  ·  OF : " + p.of : "");
+    if (document.activeElement !== $("dmgNote")) $("dmgNote").value = (p.dmg && p.dmg.note) || "";
+    const box = $("dmgThumbs");
+    const photos = (p.dmg && p.dmg.photos) || [];
+    const key = dmgOpen + ":" + photos.map((x) => x.id).join(",");
+    if (box.dataset.key === key) return;
+    box.dataset.key = key; box.textContent = "";
+    thumbURLs.splice(0).forEach((u) => URL.revokeObjectURL(u));
+    for (const ph of photos) {
+      const d = document.createElement("div"); d.className = "thumb";
+      const im = document.createElement("img"); im.alt = "Photo de la palette abîmée";
+      const b = await photoGet(ph.id);
+      if (b) { const u = URL.createObjectURL(b); thumbURLs.push(u); im.src = u; }
+      const x = document.createElement("button"); x.type = "button"; x.textContent = "Retirer";
+      x.onclick = () => { photoDel(ph.id); p.dmg.photos = p.dmg.photos.filter((q) => q.id !== ph.id); if (!p.dmg.photos.length && !p.dmg.note) delete p.dmg; save(); render(); };
+      d.append(im, x); box.appendChild(d);
+    }
+    if (!photos.length) { const t = document.createElement("p"); t.className = "help"; t.textContent = "Aucune photo : touchez « Ajouter une photo »."; box.appendChild(t); }
+  }
+  $("dmgNote").addEventListener("input", () => {
+    const p = palById(dmgOpen); if (!p) return;
+    if (!p.dmg) p.dmg = { photos: [], note: "" };
+    p.dmg.note = $("dmgNote").value; save(); prepare();
+  });
+  $("dmgDoneBtn").onclick = () => {
+    const p = palById(dmgOpen);
+    dmgOpen = null; render();
+    if (p && p.dmg) setStatus("Palette n° " + palNum(pid(p)) + " signalée abîmée (" + p.dmg.photos.length + " photo(s)).", "warn");
+    focusScan();
+  };
+  $("dmgRemoveBtn").onclick = () => {
+    const p = palById(dmgOpen); if (!p) return;
+    dropDmgPhotos(p); delete p.dmg; dmgOpen = null; save(); render();
+    setStatus("Signalement retiré.", "");
+  };
+
+  function dmgList() { return state.pallets.map((p, i) => ({ p, n: i + 1 })).filter((x) => x.p.dmg); }
+  function mailBody() {
+    const l = dmgList();
+    if (!l.length) return M().body();
+    return M().body() + "\n\nPalette(s) abîmée(s) : " + l.length + " (photos dans l'onglet « Palettes abîmées » du fichier Excel)\n" +
+      l.map((x) => "- Palette n° " + x.n + " — " + (state.mode === "GG" ? "SSCC " + x.p.c3 : "OF " + (x.p.of || state.of) + ", " + x.p.c2) + (x.p.dmg.note ? " : " + x.p.dmg.note : "")).join("\n");
+  }
+
+  async function addDmgSheet(wb) {
+    const l = dmgList();
+    if (!l.length) return;
+    const ws = wb.addWorksheet("Palettes abîmées");
+    const idHead = state.mode === "GG" ? ["SSCC", "Code produit"] : ["N° fiche / OF", "Code barre 2"];
+    const head = ["N° palette"].concat(idHead, ["Commentaire", "Heure du scan", "Photos"]);
+    ws.columns = [{ width: 11 }, { width: 26 }, { width: 26 }, { width: 34 }, { width: 18 }].concat(Array(6).fill({ width: 30 }));
+    const hr = ws.addRow(head);
+    hr.eachCell((c) => { c.font = { bold: true, name: "Calibri", size: 11 }; c.border = { bottom: { style: "thin", color: { argb: "FF7F7F7F" } } }; });
+    const PH = 150; // hauteur des photos en pixels
+    for (const x of l) {
+      const p = x.p;
+      const ids = state.mode === "GG" ? [p.c3, p.c1] : [p.of || state.of, p.c2];
+      const row = ws.addRow([String(x.n)].concat(ids, [p.dmg.note || "", p.c4 || ""]));
+      row.height = PH * 0.75 + 6;
+      row.eachCell((c) => { c.alignment = { vertical: "top", wrapText: true }; c.numFmt = "@"; });
+      let col = 5;
+      for (const ph of p.dmg.photos) {
+        const b = await photoGet(ph.id);
+        if (!b) continue;
+        const imgId = wb.addImage({ buffer: await b.arrayBuffer(), extension: "jpeg" });
+        const w = Math.round(PH * (ph.w / ph.h));
+        ws.addImage(imgId, { tl: { col: col, row: row.number - 1 + 0.05 }, ext: { width: w, height: PH }, editAs: "oneCell" });
+        ws.getColumn(col + 1).width = Math.max(ws.getColumn(col + 1).width || 10, w / 7 + 2);
+        col++;
+      }
+    }
+  }
+
   // ---- Export ----
   const rows = () => state.pallets.map((p) => M().row(p));
 
@@ -957,6 +1167,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       }
     });
     ws.autoFilter = { from: "A1", to: String.fromCharCode(64 + m.head.length) + "1" };
+    try { await addDmgSheet(wb); }
+    catch (e) { console.warn("photos non ajoutées", e); try { const w2 = wb.getWorksheet("Palettes abîmées"); if (w2) wb.removeWorksheet(w2.id); } catch (e2) {} }
     return await wb.xlsx.writeBuffer();
   }
 
@@ -978,7 +1190,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   const subject = () => M().subject();
 
   function openMailto(name) {
-    const body = "Bonjour,\n\n" + M().body() + "\n\n(Joindre le fichier " + name + " qui vient d'être téléchargé.)";
+    const body = "Bonjour,\n\n" + mailBody() + "\n\n(Joindre le fichier " + name + " qui vient d'être téléchargé.)";
     const a = document.createElement("a");
     a.href = "mailto:" + EMAIL_LIST.join(",") + "?subject=" + encodeURIComponent(subject()) + "&body=" + encodeURIComponent(body);
     document.body.appendChild(a); a.click(); a.remove();
@@ -991,18 +1203,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   };
   async function doExport() {
     if (!state.pallets.length) return;
-    if (!window.ExcelJS) { setStatus("Le générateur Excel n'a pas pu se charger. Vérifiez la connexion puis rouvrez l'application.", "bad"); return; }
+    if (!window.ExcelJS) { setStatus("Le générateur Excel n'a pas pu se charger. Rouvrez l'application ; si le problème continue, redéposez le dernier index.html.", "bad"); return; }
     const pendingNote = !curEmpty() ? " Attention : la palette en cours n'est pas validée et n'est pas dans le fichier." : "";
     const name = fileName();
     let buf = prepared.sig === sig() ? prepared.buf : null;
-    const wasReady = !!buf;
-    if (!buf) { try { buf = await buildXlsx(); } catch (e) { setStatus("Impossible de créer le fichier Excel.", "bad"); return; } }
+    let wasReady = !!buf;
+    if (!buf) { try { buf = await buildXlsx(); } catch (e) { setStatus("Impossible de créer le fichier Excel (" + (e && e.message || e) + "). Essayez « Télécharger l'Excel ».", "bad"); return; } }
 
     // Service d'envoi configuré : le fichier part directement aux destinataires, sans ouvrir la messagerie
     if (state.settings.autoMail && state.settings.relay) {
       setStatus("Envoi en cours à " + EMAIL_TO + "…", "");
-      await sendViaRelay(buf, name);
-      return;
+      if (await sendViaRelay(buf, name)) return;
+      wasReady = false; // l'envoi automatique a échoué : on passe par la messagerie du téléphone
     }
 
     const file = new File([buf], name, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
@@ -1027,7 +1239,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function offerShare(file, note) { pendingShare = { file, note }; confirmMode = "share"; render(); $("confirmBox").scrollIntoView({ block: "center" }); }
   async function shareFile(file, note) {
     try {
-      await navigator.share({ files: [file], title: subject(), text: "Bonjour,\n\n" + M().body() + "\n\nDestinataires : " + EMAIL_TO });
+      await navigator.share({ files: [file], title: subject(), text: "Bonjour,\n\n" + mailBody() + "\n\nDestinataires : " + EMAIL_TO });
       setStatus("E-mail préparé avec " + file.name + ". Destinataires à mettre : " + EMAIL_TO + " (bouton « Copier les adresses »)." + note, "ok");
     } catch (e) {
       if (e && e.name === "AbortError") setStatus("Envoi annulé." + note, "warn");
@@ -1067,6 +1279,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   $("autoMail").onchange = (e) => { state.settings.autoMail = e.target.checked; save(); };
   $("relayInput").onchange = (e) => { state.settings.relay = e.target.value.trim(); save(); render(); };
 
+  $("dlBtn").onclick = async () => {
+    if (!state.pallets.length) return;
+    if (!window.ExcelJS) { setStatus("Le générateur Excel n'a pas pu se charger : vérifiez que le fichier exceljs.min.js est bien en ligne, puis rouvrez l'application.", "bad"); return; }
+    try {
+      const buf = prepared.sig === sig() ? prepared.buf : await buildXlsx();
+      downloadFile(buf, fileName());
+      setStatus("Fichier " + fileName() + " téléchargé (" + state.pallets.length + " palettes).", "ok");
+    } catch (e) { setStatus("Impossible de créer le fichier Excel (" + (e && e.message || e) + ").", "bad"); }
+  };
   $("copyMailBtn").onclick = async () => {
     try { await navigator.clipboard.writeText(EMAIL_TO); setStatus("Adresses copiées : collez-les dans le champ « À » de l'e-mail.", "ok"); }
     catch (e) { setStatus("Destinataires : " + EMAIL_TO, "warn"); }
@@ -1141,7 +1362,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   if ("serviceWorker" in navigator && location.protocol === "https:") {
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
-  window.__scanTest = { clean, addCode, state: () => state, decodeImageFile, buildXlsx, applyLabel, usable };
+  window.__scanTest = { mailBody, addCode, state: () => state, decodeImageFile, buildXlsx, applyLabel, usable };
 })();
 </script>
 
