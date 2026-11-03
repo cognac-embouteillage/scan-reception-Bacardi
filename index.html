@@ -154,6 +154,14 @@ td.del button { min-height: 28px; padding: 2px 8px; font-size: .78rem; backgroun
 .bar-fill { height: 100%; width: 0; background: var(--yellow); transition: width .2s; }
 .progress.done .bar-fill { background: var(--ok); }
 .progress.done .progress-left { color: var(--ok); font-weight: 600; }
+.big-input, #expectedInput { flex: 1 1 160px; min-width: 0; font: 600 1.4rem var(--font-mono); padding: 10px 12px; border: 2px solid var(--ink); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.mode { flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 12px 14px; border: 2px solid var(--line); }
+.mode b { font: 700 1.15rem var(--font-display); text-transform: uppercase; letter-spacing: .03em; }
+.mode small { font-size: .8rem; color: var(--muted); font-weight: 400; }
+.mode.on { border-color: var(--ink); background: var(--yellow); color: var(--yellow-ink); }
+.mode.on small { color: var(--yellow-ink); }
+.of-val { display: block; font: 600 1.2rem var(--font-mono); padding: 6px 0; }
 details.settings summary { cursor: pointer; font-weight: 600; font-size: .9rem; }
 .settings .opts { display: grid; gap: 8px; margin-top: 10px; font-size: .9rem; }
 .settings label { display: flex; gap: 8px; align-items: flex-start; }
@@ -168,33 +176,55 @@ details.settings summary { cursor: pointer; font-weight: 600; font-size: .9rem; 
 <div class="wrap">
   <header>
     <div>
-      <h1>Réception <span>Palettes GG</span></h1>
-      <p class="sub">Scannez les 3 codes de chaque fiche palette, puis exportez le camion en Excel.</p>
+      <h1 id="appTitle">Réception <span>Palettes GG</span></h1>
+      <p class="sub" id="appSub"></p>
     </div>
-    <div class="date-box">
+    <div class="date-box" id="dateBox">
       <label class="lbl" for="dateInput">Date réception</label>
       <input type="date" id="dateInput">
+    </div>
+    <div class="date-box of-box" id="ofBox" hidden>
+      <label class="lbl">N° fiche / OF</label>
+      <span class="of-val" id="ofVal"></span>
     </div>
   </header>
 
   <section class="panel setup" id="setupPanel" aria-labelledby="h-setup" hidden>
-    <h2 id="h-setup">Nouveau camion</h2>
-    <label class="lbl" for="expectedInput">Nombre de palettes à scanner</label>
-    <div class="scan-row">
-      <input id="expectedInput" type="number" inputmode="numeric" min="1" max="99" step="1" placeholder="ex. 26">
-      <button class="btn-primary" id="startBtn" type="button">Commencer le scan</button>
+    <h2 id="h-setup">Nouveau scan</h2>
+    <div class="modes" id="modeChoice" role="radiogroup" aria-label="Type de scan">
+      <button type="button" class="mode" data-mode="GG" role="radio">
+        <b>Réception GG</b><small>3 codes-barres · nombre de palettes fixé</small>
+      </button>
+      <button type="button" class="mode" data-mode="HEN" role="radio">
+        <b>Départ HENNESSY</b><small>2 codes-barres · N° de fiche / OF</small>
+      </button>
     </div>
-    <p class="help" id="setupHelp">Indiquez le nombre de palettes du bon de livraison. L'application bloquera les palettes en trop et signalera celles qui manquent.</p>
+    <div id="setupGG">
+      <label class="lbl" for="expectedInput">Nombre de palettes à scanner</label>
+      <div class="scan-row">
+        <input id="expectedInput" class="big-input" type="number" inputmode="numeric" min="1" max="999" step="1" placeholder="ex. 26">
+        <button class="btn-primary" id="startBtnGG" type="button">Commencer le scan</button>
+      </div>
+      <p class="help">Indiquez le nombre de palettes du bon de livraison. L'application bloquera les palettes en trop et signalera celles qui manquent.</p>
+    </div>
+    <div id="setupHEN" hidden>
+      <label class="lbl" for="ofInput">N° de fiche / OF</label>
+      <div class="scan-row">
+        <input id="ofInput" class="big-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ex. 4500123456">
+        <button class="btn-primary" id="startBtnHEN" type="button">Commencer le scan</button>
+      </div>
+      <p class="help">Pas de nombre de palettes à fixer : scannez toutes les palettes du départ. Le N° de fiche / OF apparaît dans la 1<sup>re</sup> colonne de l'Excel.</p>
+    </div>
   </section>
 
   <section class="panel" aria-labelledby="h-scan" id="scanPanel">
     <div class="panel-head">
       <h2 id="h-scan">Scan</h2>
-      <button class="btn-sm btn-ghost" id="editExpectedBtn" type="button">Modifier le nombre</button>
+      <button class="btn-sm btn-ghost" id="editSetupBtn" type="button">Modifier</button>
     </div>
     <div class="progress" id="progress">
-      <div class="progress-top"><span class="progress-num"><b id="progDone">0</b> / <span id="progTotal">0</span> palettes</span><span id="progLeft" class="progress-left"></span></div>
-      <div class="bar"><div class="bar-fill" id="progBar"></div></div>
+      <div class="progress-top"><span class="progress-num" id="progNum"></span><span id="progLeft" class="progress-left"></span></div>
+      <div class="bar" id="progBarWrap"><div class="bar-fill" id="progBar"></div></div>
     </div>
     <label class="btn btn-yellow live-btn photo-btn" for="photoInput">
       <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -209,8 +239,7 @@ details.settings summary { cursor: pointer; font-weight: 600; font-size: .9rem; 
         Caméra en direct
       </button>
     </div>
-    <div id="status" class="status" role="status" aria-live="polite">Prêt. Touchez « Photographier l'étiquette » : les 3 codes sont lus et la palette s'enregistre toute seule.</div>
-    <div id="pending" hidden></div>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
   </section>
 
   <section class="panel" aria-labelledby="h-cur" id="curPanel">
@@ -231,9 +260,7 @@ details.settings summary { cursor: pointer; font-weight: 600; font-size: .9rem; 
     </div>
     <div class="table-scroll">
       <table>
-        <thead><tr>
-          <th>#</th><th>date reception</th><th>Code barre 1 code produit</th><th>Code barre 2 GTIN /Qte Pal / N° lot</th><th>Code barre 3 SSCC</th><th>aaaammjjhh</th><th></th>
-        </tr></thead>
+        <thead><tr id="theadRow"></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>
@@ -252,16 +279,13 @@ details.settings summary { cursor: pointer; font-weight: 600; font-size: .9rem; 
   <details class="settings panel">
     <summary>Réglages</summary>
     <div class="opts">
-      <label><input type="radio" name="c5" value="scan" id="c5scan" checked> <span>Colonne « aaaammjjhh » : remplie par un 4<sup>e</sup> code-barres scanné (facultatif)</span></label>
-      <label><input type="radio" name="c5" value="auto" id="c5auto"> <span>Colonne « aaaammjjhh » : remplie automatiquement avec la date et l'heure du scan</span></label>
-      <label><input type="checkbox" id="autoNext" checked> <span>Passer à la palette suivante automatiquement quand un code déjà rempli est re-scanné (nouvelle étiquette)</span></label>
       <label><input type="checkbox" id="autoMail" checked> <span>Si le service d'envoi est configuré, envoyer aussi directement à <b id="mailTo"></b></span></label>
       <div>
         <label class="lbl" for="relayInput" style="display:block">Adresse du service d'envoi (Google Apps Script)</label>
         <input id="relayInput" type="url" placeholder="https://script.google.com/macros/s/…/exec" style="width:100%;font:400 .85rem var(--font-mono);padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)">
         <p class="help" id="relayHelp"></p>
       </div>
-      <p class="help">Les codes sont rangés selon leur préfixe GS1 : <b>00</b> = SSCC, <b>02</b>/<b>01</b> = GTIN / quantité / lot, <b>11</b> = code produit. Avec la caméra, les autres codes-barres (cartons…) sont ignorés. Les scans sont gardés sur cet appareil jusqu'à « Nouveau camion ».</p>
+      <p class="help" id="rulesHelp"></p>
     </div>
   </details>
 </div>
@@ -270,11 +294,7 @@ details.settings summary { cursor: pointer; font-weight: 600; font-size: .9rem; 
   <video id="liveVideo" playsinline muted autoplay></video>
   <div class="live-frame" aria-hidden="true"></div>
   <div class="live-top">
-    <div class="chips">
-      <span class="chip" id="chip-c1">Code produit</span>
-      <span class="chip" id="chip-c2">GTIN / Qté / Lot</span>
-      <span class="chip" id="chip-c3">SSCC</span>
-    </div>
+    <div class="chips" id="chips"></div>
     <div class="live-count"><span id="liveCount">0</span> palette(s)</div>
   </div>
   <div class="live-bottom">
@@ -335,14 +355,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 //# sourceMappingURL=exceljs.min.js.map</script>
 <script>
 (function () {
-  const KEYS = ["c1", "c2", "c3", "c4"];
-  const LABELS = {
-    c1: "Code barre 1 code produit",
-    c2: "Code barre 2 GTIN /Qte Pal / N° lot",
-    c3: "Code barre 3 SSCC",
-    c4: "aaaammjjhh"
-  };
-  const SHORT = { c1: "Code produit", c2: "GTIN / Qté / Lot", c3: "SSCC", c4: "aaaammjjhh" };
   const STORE = "scan-palettes-v1";
   // ---- Envoi e-mail ----
   const EMAIL_LIST = ["aurelien@pdf16.fr", "prepacommande@pdf16.fr", "Marie-Ange.SALOMON@pdf16.fr"];
@@ -353,18 +365,60 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   const $ = (id) => document.getElementById(id);
   const scanInput = $("scanInput");
 
-  let state = load() || { date: todayISO(), pallets: [], cur: emptyPallet(), settings: { c5: "auto", autoNext: true, v: 2 } };
-  if (state.settings.v !== 2) { state.settings.c5 = "auto"; state.settings.v = 2; }
+  // ---- Les deux types de scan ----
+  const MODES = {
+    GG: {
+      title: ["Réception", "Palettes GG"],
+      sub: "Photographiez chaque fiche palette : les 3 codes sont lus et la palette s'enregistre seule.",
+      keys: ["c1", "c2", "c3"],
+      labels: { c1: "Code barre 1 code produit", c2: "Code barre 2 GTIN /Qte Pal / N° lot", c3: "Code barre 3 SSCC" },
+      short: { c1: "Code produit", c2: "GTIN / Qté / Lot", c3: "SSCC" },
+      unit: "camion", resetLabel: "Nouveau camion", listTitle: "Camion",
+      head: ["date reception", "Code barre 1 code produit", "Code barre 2 GTIN /Qte Pal / N° lot", "Code barre 3  SSCC", "aaaammjjhh"],
+      widths: [16, 30, 42, 30, 20],
+      row: (p) => [dateDDMMYYYY(state.date), p.c1, p.c2, p.c3, p.c4],
+      sheet: "Réception",
+      file: () => "reception_palettes_GG_" + dateDDMMYYYY(state.date) + ".xlsx",
+      subject: () => "Réception Palettes GG - " + dateDDMMYYYY(state.date) + " - " + state.pallets.length + " palette(s)",
+      body: () => "Ci-joint la réception du " + dateDDMMYYYY(state.date) + " : " + state.pallets.length + " palette(s).",
+      rules: "Réception GG : les codes sont rangés selon leur préfixe GS1 (00 = SSCC, 01/02 = GTIN / quantité / lot, 11 = code produit). Les autres codes-barres sont ignorés. Une fiche est reconnue par son SSCC : elle ne peut pas être scannée deux fois."
+    },
+    HEN: {
+      title: ["Départ", "HENNESSY"],
+      sub: "Photographiez chaque fiche palette : les 2 codes sont lus (de haut en bas) et la palette s'enregistre seule.",
+      keys: ["c1", "c2"],
+      labels: { c1: "Code barre 1", c2: "Code barre 2" },
+      short: { c1: "Code barre 1", c2: "Code barre 2" },
+      unit: "départ", resetLabel: "Nouveau départ", listTitle: "Départ",
+      head: ["N° fiche / OF", "Code barre 1", "Code barre 1", "Code barre 2", "aaaammjjhh"],
+      widths: [18, 30, 30, 42, 20],
+      row: (p) => [state.of, p.c1, p.c1, p.c2, p.c4],
+      sheet: "Départ",
+      file: () => "depart_HENNESSY_" + safeName(state.of) + "_" + dateDDMMYYYY(todayISO()) + ".xlsx",
+      subject: () => "Départ HENNESSY - OF " + state.of + " - " + state.pallets.length + " palette(s)",
+      body: () => "Ci-joint le départ HENNESSY, fiche / OF " + state.of + " : " + state.pallets.length + " palette(s).",
+      rules: "Départ HENNESSY : le code-barres le plus haut sur l'étiquette est le code barre 1, celui en dessous le code barre 2 (à la douchette : dans l'ordre de scan). Une fiche déjà scannée (mêmes codes, ou même SSCC) est refusée."
+    }
+  };
+  const M = () => MODES[state.mode] || MODES.GG;
+
+  let state = load() || newState("GG", {});
+  if (!state.mode) state.mode = "GG";
+  if (!state.settings) state.settings = {};
   if (state.settings.autoMail === undefined) state.settings.autoMail = true;
   if (!state.settings.relay) state.settings.relay = RELAY_URL_DEFAULT;
-  let pending = null; // code non reconnu en attente d'affectation
+  if (state.of === undefined) state.of = "";
   let confirmMode = null;
+  let editingSetup = false;
+  let pickedMode = state.mode;
 
+  function newState(mode, settings) { return { mode, date: todayISO(), of: "", expected: 0, pallets: [], cur: emptyPallet(), settings: settings || {} }; }
   function emptyPallet() { return { c1: "", c2: "", c3: "", c4: "" }; }
   function todayISO() { const d = new Date(); return d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate()); }
   function p2(n) { return String(n).padStart(2, "0"); }
   function dateDDMMYYYY(iso) { const [y, m, d] = (iso || "").split("-"); return y ? d + m + y : ""; }
   function stamp() { const d = new Date(); return d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds()); }
+  function safeName(s) { return String(s || "").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "sans-numero"; }
 
   function load() { try { const s = JSON.parse(localStorage.getItem(STORE)); return s && s.pallets ? s : null; } catch (e) { return null; } }
   function save() { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {} }
@@ -377,190 +431,205 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     s = s.replace(/[()\s]/g, "");                    // (00)… saisi à la main
     return s.trim();
   }
-  function classify(code) {
-    if (/^00\d{18}$/.test(code)) return "c3";
+  const isSSCC = (c) => /^00\d{18}$/.test(c);
+  // Réception GG : rangement par préfixe GS1
+  function classifyGG(code) {
+    if (isSSCC(code)) return "c3";
     if (/^0[12]\d{14}/.test(code)) return "c2";
     if (/^11\d{6}/.test(code)) return "c1";
-    if (state.settings.c5 === "scan") return "c4?";
     return null;
   }
-
-  function isDupSSCC(sscc, ignoreIdx) {
-    return sscc && state.pallets.some((p, i) => i !== ignoreIdx && p.c3 === sscc);
+  // Identifiant unique d'une palette (pour bloquer les doublons)
+  function keyOf(p) {
+    if (state.mode === "GG") return p.c3;
+    return [p.c1, p.c2].find(isSSCC) || (p.c1 + "|" + p.c2);
   }
 
   function setStatus(msg, kind) { const el = $("status"); el.textContent = msg; el.className = "status" + (kind ? " " + kind : ""); }
 
-  function curComplete() { return state.cur.c1 && state.cur.c2 && state.cur.c3; }
-  function expected() { return state.expected > 0 ? state.expected : 0; }
+  const keys = () => M().keys;
+  function curComplete() { return keys().every((k) => state.cur[k]); }
+  function curEmpty() { return keys().every((k) => !state.cur[k]); }
+  function expected() { return state.mode === "GG" && state.expected > 0 ? state.expected : 0; }
+  function ready() { return state.mode === "GG" ? expected() > 0 : !!state.of; }
   function isFull() { return expected() > 0 && state.pallets.length >= expected(); }
-  function dupIndex(sscc) { return state.pallets.findIndex((p) => p.c3 === sscc); }
+  function dupIndex(key) { return key ? state.pallets.findIndex((p) => keyOf(p) === key) : -1; }
   function refuse(msg) { setStatus(msg, "bad"); beep(false); }
-  function fullMsg() { return "Camion complet (" + state.pallets.length + "/" + expected() + ") : impossible d'ajouter une palette. Si le bon est faux, touchez « Modifier le nombre »."; }
-  function dupMsg(i) { return "Fiche déjà scannée : c'est la palette n° " + (i + 1) + " (SSCC …" + state.pallets[i].c3.slice(-6) + "). Elle n'est pas ajoutée une 2e fois."; }
+  function notReadyMsg() { return state.mode === "GG" ? "Indiquez d'abord le nombre de palettes du camion." : "Indiquez d'abord le N° de fiche / OF."; }
+  function fullMsg() { return "Camion complet (" + state.pallets.length + "/" + expected() + ") : impossible d'ajouter une palette. Si le bon est faux, touchez « Modifier »."; }
+  function dupMsg(i) { return "Fiche déjà scannée : c'est la palette n° " + (i + 1) + ". Elle n'est pas ajoutée une 2e fois."; }
+  function countTxt() { return expected() ? state.pallets.length + "/" + expected() : String(state.pallets.length); }
 
+  // ---- Ajout d'un code (douchette / saisie) ----
   function addCode(raw) {
     const code = clean(raw);
     if (!code) return;
-    if (!expected()) { refuse("Indiquez d'abord le nombre de palettes du camion."); return; }
+    if (!ready()) { refuse(notReadyMsg()); return; }
     if (isFull()) { refuse(fullMsg()); return; }
-    let slot = classify(code);
-    if (slot === "c3" && dupIndex(code) >= 0) {
-      const had = state.cur.c1 || state.cur.c2;
-      if (had) { state.cur = emptyPallet(); save(); render(); }
-      refuse(dupMsg(dupIndex(code)) + (had ? " Palette en cours effacée." : ""));
-      return;
-    }
-    if (KEYS.some((k) => state.cur[k] === code)) { setStatus("Déjà scanné sur cette palette : " + code, "warn"); return; }
-    if (slot === "c4?") slot = state.cur.c4 ? null : "c4";
-    if (!slot) { pending = code; render(); setStatus("Code non reconnu. Choisissez sa colonne ci-dessous.", "warn"); return; }
-    place(slot, code);
-  }
+    if (keys().some((k) => state.cur[k] === code)) { setStatus("Déjà scanné sur cette palette : " + code, "warn"); return; }
 
-  function place(slot, code) {
-    pending = null;
-    if (state.cur[slot] && state.cur[slot] !== code) {
-      if (state.settings.autoNext && curComplete()) {
-        commit(true);
-      } else {
-        setStatus(SHORT[slot] + " remplacé : " + code, "warn");
-        state.cur[slot] = code; save(); render(slot); return;
+    let slot;
+    if (state.mode === "GG") {
+      slot = classifyGG(code);
+      if (!slot) { refuse("Ce code n'est pas un code de fiche palette GG : " + code); return; }
+      if (slot === "c3" && dupIndex(code) >= 0) {
+        const had = !curEmpty();
+        if (had) { state.cur = emptyPallet(); save(); render(); }
+        refuse(dupMsg(dupIndex(code)) + (had ? " Palette en cours effacée." : ""));
+        return;
       }
+      if (state.cur[slot]) setStatus(M().short[slot] + " remplacé : " + code, "warn");
+    } else {
+      if (isSSCC(code) && dupIndex(code) >= 0) {
+        const had = !curEmpty();
+        if (had) { state.cur = emptyPallet(); save(); render(); }
+        refuse(dupMsg(dupIndex(code)) + (had ? " Palette en cours effacée." : ""));
+        return;
+      }
+      slot = keys().find((k) => !state.cur[k]);
     }
     state.cur[slot] = code;
-    setStatus(SHORT[slot] + " : " + code, "ok");
-    // palette complète : auto-validation si la 4e colonne n'est pas attendue au scan, ou si elle est remplie
-    if (curComplete() && (state.settings.c5 === "auto" || state.cur.c4)) {
-      commit(false);
-      return;
-    }
+    if (curComplete()) { commit(); return; }
+    setStatus(M().short[slot] + " : " + code, "ok");
     save(); render(slot);
   }
 
-  function commit(fromAuto) {
+  function commit() {
     const c = state.cur;
-    if (!(c.c1 || c.c2 || c.c3)) { setStatus("La palette en cours est vide.", "warn"); return false; }
+    if (curEmpty()) { setStatus("La palette en cours est vide.", "warn"); return false; }
     if (isFull()) { refuse(fullMsg()); return false; }
-    if (c.c3 && dupIndex(c.c3) >= 0) { const i = dupIndex(c.c3); state.cur = emptyPallet(); save(); render(); refuse(dupMsg(i)); return false; }
-    const row = { c1: c.c1, c2: c.c2, c3: c.c3, c4: c.c4 || (state.settings.c5 === "auto" ? stamp() : ""), t: Date.now() };
+    const row = { c1: c.c1, c2: c.c2, c3: state.mode === "GG" ? c.c3 : "", c4: stamp(), t: Date.now() };
+    const d = dupIndex(keyOf(row));
+    if (d >= 0) { state.cur = emptyPallet(); save(); render(); refuse(dupMsg(d)); return false; }
     state.pallets.push(row);
     state.cur = emptyPallet();
     save();
-    const missing = ["c1", "c2", "c3"].filter((k) => !row[k]).map((k) => SHORT[k]);
-    if (missing.length) setStatus("Palette " + state.pallets.length + " enregistrée, incomplète (manque : " + missing.join(", ") + ").", "warn");
-    else setStatus("Palette " + state.pallets.length + "/" + expected() + " enregistrée." + (fromAuto ? " Nouvelle étiquette en cours." : ""), "ok");
-    if (isFull()) { setStatus("Camion complet : " + state.pallets.length + "/" + expected() + " palettes ✓. Vous pouvez envoyer l'Excel.", "ok"); beep(true); }
+    const missing = keys().filter((k) => !row[k]).map((k) => M().short[k]);
+    if (missing.length) setStatus("Palette " + countTxt() + " enregistrée, incomplète (manque : " + missing.join(", ") + ").", "warn");
+    else setStatus("Palette " + countTxt() + " enregistrée.", "ok");
+    if (isFull()) setStatus("Camion complet : " + countTxt() + " palettes ✓. Vous pouvez envoyer l'Excel.", "ok");
+    beep(true);
     render(null, true);
     return true;
   }
 
   // ---- Rendu ----
   function render(flashSlot, flashRow) {
+    const m = M();
+    document.title = m.title.join(" ");
+    const t = $("appTitle"); t.textContent = m.title[0] + " ";
+    const sp = document.createElement("span"); sp.textContent = m.title[1]; t.appendChild(sp);
+    $("appSub").textContent = m.sub;
+    $("dateBox").hidden = state.mode !== "GG";
+    $("ofBox").hidden = state.mode !== "HEN" || !state.of;
+    $("ofVal").textContent = state.of;
     $("dateInput").value = state.date;
-    const exp = expected();
-    const setupOpen = !exp || editingExpected;
+
+    // écran de départ
+    const setupOpen = !ready() || editingSetup;
+    const setupMode = setupOpen ? pickedMode : state.mode;
     $("setupPanel").hidden = !setupOpen;
     $("scanPanel").hidden = setupOpen;
     $("curPanel").hidden = setupOpen;
-    if (setupOpen && document.activeElement !== $("expectedInput")) $("expectedInput").value = exp || "";
-    $("startBtn").textContent = editingExpected ? "Enregistrer" : "Commencer le scan";
-    $("h-setup").textContent = editingExpected ? "Nombre de palettes" : "Nouveau camion";
-    const done = state.pallets.length;
-    $("progDone").textContent = done; $("progTotal").textContent = exp;
+    const locked = state.pallets.length > 0 || !curEmpty();
+    $("modeChoice").hidden = locked;
+    document.querySelectorAll(".mode").forEach((b) => {
+      const on = b.dataset.mode === setupMode;
+      b.classList.toggle("on", on); b.setAttribute("aria-checked", on ? "true" : "false");
+    });
+    $("setupGG").hidden = setupMode !== "GG";
+    $("setupHEN").hidden = setupMode !== "HEN";
+    $("h-setup").textContent = editingSetup ? (setupMode === "GG" ? "Nombre de palettes" : "N° de fiche / OF") : "Nouveau scan";
+    ["startBtnGG", "startBtnHEN"].forEach((id) => { $(id).textContent = editingSetup ? "Enregistrer" : "Commencer le scan"; });
+    if (setupOpen && document.activeElement !== $("expectedInput")) $("expectedInput").value = state.expected || "";
+    if (setupOpen && document.activeElement !== $("ofInput")) $("ofInput").value = state.of || "";
+    $("editSetupBtn").textContent = state.mode === "GG" ? "Modifier le nombre" : "Modifier l'OF";
+
+    // progression
+    const exp = expected(), done = state.pallets.length;
+    $("progNum").textContent = exp ? done + " / " + exp + " palettes" : done + " palette(s) scannée(s)";
+    $("progBarWrap").hidden = !exp;
     $("progBar").style.width = exp ? Math.min(100, done / exp * 100) + "%" : "0";
     $("progress").classList.toggle("done", !!exp && done >= exp);
-    $("progLeft").textContent = !exp ? "" : done >= exp ? "Camion complet ✓" : "Reste " + (exp - done) + " palette(s)";
-    $("curNum").textContent = "n° " + (state.pallets.length + 1);
-    $("c5scan").checked = state.settings.c5 === "scan";
-    $("c5auto").checked = state.settings.c5 === "auto";
-    $("autoNext").checked = !!state.settings.autoNext;
+    $("progLeft").textContent = exp ? (done >= exp ? "Camion complet ✓" : "Reste " + (exp - done) + " palette(s)") : (state.mode === "HEN" ? "OF " + state.of : "");
+    $("curNum").textContent = "n° " + (done + 1);
+    if (!$("status").textContent) setStatus("Prêt. Touchez « Photographier l'étiquette » : les " + keys().length + " codes sont lus et la palette s'enregistre seule.", "");
+
+    // réglages
     $("autoMail").checked = !!state.settings.autoMail;
     $("mailTo").textContent = EMAIL_TO;
     if (document.activeElement !== $("relayInput")) $("relayInput").value = state.settings.relay || "";
     $("relayHelp").textContent = state.settings.relay
       ? "Envoi automatique actif : en plus de la messagerie, le fichier part directement à " + EMAIL_TO + "."
       : "Facultatif. Sans ce service, le bouton ouvre votre messagerie avec le fichier joint.";
+    $("rulesHelp").textContent = m.rules + " Les scans sont gardés sur cet appareil jusqu'à « " + m.resetLabel + " ».";
 
+    // palette en cours
     const slots = $("slots"); slots.textContent = "";
-    KEYS.forEach((k, i) => {
-      if (k === "c4" && state.settings.c5 === "auto") return;
+    keys().forEach((k, i) => {
       const v = state.cur[k];
       const div = document.createElement("div");
       div.className = "slot" + (v ? " filled" : "") + (flashSlot === k ? " flash" : "");
       const dot = document.createElement("div"); dot.className = "dot"; dot.textContent = v ? "✓" : String(i + 1);
       const body = document.createElement("div"); body.style.minWidth = "0";
-      const nm = document.createElement("div"); nm.className = "name"; nm.textContent = LABELS[k];
-      if (k === "c4") { const o = document.createElement("span"); o.className = "opt"; o.textContent = " (facultatif)"; nm.appendChild(o); }
+      const nm = document.createElement("div"); nm.className = "name"; nm.textContent = m.labels[k];
       const val = document.createElement("div"); val.className = "val" + (v ? "" : " empty"); val.textContent = v || "en attente de scan";
       body.append(nm, val);
       div.append(dot, body);
       if (v) {
-        const x = document.createElement("button"); x.className = "slot-x"; x.type = "button"; x.setAttribute("aria-label", "Effacer " + LABELS[k]); x.textContent = "✕";
+        const x = document.createElement("button"); x.className = "slot-x"; x.type = "button"; x.setAttribute("aria-label", "Effacer " + m.labels[k]); x.textContent = "✕";
         x.onclick = () => { state.cur[k] = ""; save(); render(); focusScan(); };
         div.appendChild(x);
       } else div.appendChild(document.createElement("span"));
       slots.appendChild(div);
     });
-    $("validateBtn").disabled = !(state.cur.c1 || state.cur.c2 || state.cur.c3);
-
-    // code en attente
-    const pd = $("pending");
-    if (pending) {
-      pd.hidden = false; pd.className = "pending"; pd.textContent = "";
-      const t = document.createElement("div"); t.append("Code non reconnu : ");
-      const cd = document.createElement("code"); cd.textContent = pending; t.appendChild(cd);
-      const ch = document.createElement("div"); ch.className = "choices";
-      KEYS.forEach((k) => {
-        const b = document.createElement("button"); b.type = "button"; b.className = "btn-sm"; b.textContent = "→ " + SHORT[k];
-        b.onclick = () => { place(k, pending); focusScan(); };
-        ch.appendChild(b);
-      });
-      const ig = document.createElement("button"); ig.type = "button"; ig.className = "btn-sm btn-ghost"; ig.textContent = "Ignorer";
-      ig.onclick = () => { pending = null; render(); setStatus("Code ignoré.", ""); focusScan(); };
-      ch.appendChild(ig);
-      pd.append(t, ch);
-    } else { pd.hidden = true; pd.textContent = ""; }
+    $("validateBtn").disabled = curEmpty();
 
     // tableau
+    $("h-list").textContent = m.listTitle;
+    $("resetBtn").textContent = m.resetLabel;
+    const hr = $("theadRow"); hr.textContent = "";
+    ["#"].concat(m.head, [""]).forEach((h) => { const th = document.createElement("th"); th.textContent = h; hr.appendChild(th); });
     const tb = $("tbody"); tb.textContent = "";
-    $("count").textContent = state.pallets.length;
-    const dd = dateDDMMYYYY(state.date);
-    if (!state.pallets.length) {
+    $("count").textContent = done;
+    if (!done) {
       const tr = document.createElement("tr"); tr.className = "example";
-      ["", "19102026", "112610162404230828149", "021008048098867537791026289GE200", "00330119343007211037", "20090622221517"].forEach((v) => {
-        const td = document.createElement("td"); td.textContent = v; tr.appendChild(td);
-      });
-      const td = document.createElement("td"); const tg = document.createElement("span"); tg.className = "tag"; tg.textContent = "exemple"; td.appendChild(tg); tr.appendChild(td);
+      const cells = state.mode === "GG"
+        ? ["", "19102026", "112610162404230828149", "021008048098867537791026289GE200", "00330119343007211037", "20261019221517"]
+        : ["", "Aucune palette scannée pour le moment.", "", "", "", ""];
+      cells.forEach((v) => { const td = document.createElement("td"); td.textContent = v; tr.appendChild(td); });
+      const td = document.createElement("td");
+      if (state.mode === "GG") { const tg = document.createElement("span"); tg.className = "tag"; tg.textContent = "exemple"; td.appendChild(tg); }
+      tr.appendChild(td);
       tb.appendChild(tr);
     }
     state.pallets.forEach((p, i) => {
       const tr = document.createElement("tr");
-      tr.className = "row" + (isDupSSCC(p.c3, i) ? " dup" : "") + (flashRow && i === state.pallets.length - 1 ? " flash" : "");
-      const cells = [String(i + 1), dd, p.c1, p.c2, p.c3, p.c4];
-      cells.forEach((v, j) => { const td = document.createElement("td"); if (j === 0) td.className = "num"; td.textContent = v; tr.appendChild(td); });
+      tr.className = "row" + (flashRow && i === done - 1 ? " flash" : "");
+      [String(i + 1)].concat(m.row(p)).forEach((v, j) => { const td = document.createElement("td"); if (j === 0) td.className = "num"; td.textContent = v; tr.appendChild(td); });
       const td = document.createElement("td"); td.className = "del";
       const b = document.createElement("button"); b.type = "button"; b.textContent = "Supprimer"; b.setAttribute("aria-label", "Supprimer la palette " + (i + 1));
       b.onclick = () => { state.pallets.splice(i, 1); save(); render(); setStatus("Palette " + (i + 1) + " supprimée.", "warn"); };
       td.appendChild(b); tr.appendChild(td);
       tb.appendChild(tr);
     });
-    $("xlsxBtn").disabled = !state.pallets.length;
-    $("copyBtn").disabled = !state.pallets.length;
+    $("xlsxBtn").disabled = !done;
+    $("copyBtn").disabled = !done;
     prepare();
 
-    // confirmation nouveau camion
+    // confirmations
     const cb = $("confirmBox");
     if (confirmMode === "reset") {
       cb.hidden = false; cb.className = "confirm"; cb.textContent = "";
-      const s = document.createElement("span"); s.textContent = "Effacer les " + state.pallets.length + " palette(s) de ce camion ? Pensez à exporter avant.";
+      const s = document.createElement("span"); s.textContent = "Effacer les " + done + " palette(s) de ce " + m.unit + " ? Pensez à envoyer l'Excel avant.";
       const y = document.createElement("button"); y.className = "btn-sm btn-danger"; y.textContent = "Oui, effacer";
-      y.onclick = () => { state.pallets = []; state.cur = emptyPallet(); state.date = todayISO(); state.expected = 0; confirmMode = null; pending = null; save(); render(); setStatus("Nouveau camion : indiquez le nombre de palettes.", "ok"); $("expectedInput").focus(); };
+      y.onclick = () => { pickedMode = state.mode; state = newState(state.mode, state.settings); confirmMode = null; editingSetup = false; save(); setStatus("", ""); render(); };
       const n = document.createElement("button"); n.className = "btn-sm"; n.textContent = "Annuler";
       n.onclick = () => { confirmMode = null; render(); };
       cb.append(s, y, n);
     } else if (confirmMode === "short") {
       cb.hidden = false; cb.className = "confirm"; cb.textContent = "";
-      const s = document.createElement("span"); s.textContent = "Il manque " + (expected() - state.pallets.length) + " palette(s) : " + state.pallets.length + "/" + expected() + " scannées. Envoyer quand même ?";
+      const s = document.createElement("span"); s.textContent = "Il manque " + (expected() - done) + " palette(s) : " + done + "/" + expected() + " scannées. Envoyer quand même ?";
       const y = document.createElement("button"); y.className = "btn-sm btn-danger"; y.textContent = "Envoyer quand même";
       y.onclick = () => { confirmMode = null; render(); doExport(); };
       const n = document.createElement("button"); n.className = "btn-sm"; n.textContent = "Continuer le scan";
@@ -579,7 +648,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   });
 
   // ---- Lecture des codes-barres (moteur zxing-cpp en WebAssembly) ----
-  const GS1_ONLY = ["c1", "c2", "c3"];
   let zxReady = null;
   function zx() {
     if (!window.ZXingWASM) return Promise.reject(new Error("lecteur non chargé"));
@@ -593,15 +661,43 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     }
     return zxReady;
   }
-  const READ_OPTS = { formats: ["Code128", "DataMatrix", "QRCode"], tryHarder: true, tryRotate: true, tryInvert: false, tryDownscale: true, maxNumberOfSymbols: 6 };
+  const READ_OPTS = { formats: ["Code128", "DataMatrix", "QRCode"], tryHarder: true, tryRotate: true, tryInvert: false, tryDownscale: true, maxNumberOfSymbols: 8 };
+  // Renvoie les codes lus avec leur position verticale (pour l'ordre haut → bas)
   async function readImageData(imgData) {
     await zx();
     const res = await ZXingWASM.readBarcodes(imgData, READ_OPTS);
-    return res.filter((r) => r.isValid && r.text).map((r) => clean(r.text));
+    return res.filter((r) => r.isValid && r.text).map((r) => {
+      const ps = r.position ? [r.position.topLeft, r.position.topRight, r.position.bottomLeft, r.position.bottomRight] : [];
+      const y = ps.length ? ps.reduce((a, q) => a + q.y, 0) / ps.length : 0;
+      const x = ps.length ? ps.reduce((a, q) => a + q.x, 0) / ps.length : 0;
+      return { text: clean(r.text), y, x };
+    });
   }
-  // Ne garde que les codes de l'étiquette palette (00 / 01-02 / 11) : le reste (cartons, etc.) est ignoré
-  function onlyLabelCodes(codes) {
-    return [...new Set(codes)].filter((c) => GS1_ONLY.includes(classify(c)));
+  // Garde les codes utiles, sans doublon, triés de haut en bas
+  function usable(hits) {
+    const seen = new Set(), out = [];
+    hits.slice().sort((a, b) => a.y - b.y || a.x - b.x).forEach((h) => {
+      if (!h.text || seen.has(h.text)) return;
+      if (state.mode === "GG" && !classifyGG(h.text)) return; // GG : codes de la fiche uniquement
+      seen.add(h.text); out.push(h.text);
+    });
+    return out;
+  }
+
+  // Applique les codes d'une étiquette entière (photo ou caméra) : renvoie true si la palette est enregistrée
+  function applyLabel(codes, fromLive) {
+    const n = keys().length;
+    let pal = emptyPallet();
+    if (state.mode === "GG") codes.forEach((c) => { const k = classifyGG(c); if (k && !pal[k]) pal[k] = c; });
+    else { pal.c1 = codes[0] || ""; pal.c2 = codes[1] || ""; }
+    const got = keys().filter((k) => pal[k]).length;
+    if (got < n) return { done: false, got };
+    const d = dupIndex(keyOf(pal));
+    if (d >= 0) return { done: false, dup: d };
+    if (isFull()) return { done: false, full: true };
+    state.cur = pal;
+    commit();
+    return { done: true };
   }
 
   // ---- Photo de l'étiquette ----
@@ -609,21 +705,21 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const f = e.target.files && e.target.files[0];
     e.target.value = "";
     if (!f) return;
+    if (!ready()) { refuse(notReadyMsg()); return; }
+    if (isFull()) { refuse(fullMsg()); return; }
     setStatus("Lecture de la photo…", "");
     try {
-      const codes = onlyLabelCodes(await decodeImageFile(f));
-      if (!codes.length) { setStatus("Aucun code de fiche palette lu. Reprenez la photo bien en face, l'étiquette entière et nette.", "bad"); return; }
-      if (!expected()) { refuse("Indiquez d'abord le nombre de palettes du camion."); return; }
-      if (isFull()) { refuse(fullMsg()); return; }
-      const sscc = codes.find((c) => classify(c) === "c3");
-      if (sscc && dupIndex(sscc) >= 0) { refuse(dupMsg(dupIndex(sscc))); return; }
-      const order = (c) => ({ c1: 0, c2: 1, c3: 2 }[classify(c)]);
-      codes.sort((x, y) => order(x) - order(y));
-      const before = state.pallets.length;
+      const codes = usable(await decodeImageFile(f));
+      const n = keys().length;
+      if (!codes.length) { refuse("Aucun code-barres lu. Reprenez la photo bien en face, l'étiquette entière et nette."); return; }
+      if (state.mode === "HEN" && codes.length > n) setStatus(codes.length + " codes-barres sur la photo : seuls les 2 plus hauts sont pris. Cadrez uniquement l'étiquette si ce n'est pas bon.", "warn");
+      const r = applyLabel(codes, false);
+      if (r.dup !== undefined) { refuse(dupMsg(r.dup)); return; }
+      if (r.full) { refuse(fullMsg()); return; }
+      if (r.done) { if (state.mode === "HEN" && codes.length > n) setStatus("Palette " + countTxt() + " enregistrée. Attention : " + codes.length + " codes-barres sur la photo, les 2 plus hauts ont été pris.", "warn"); return; }
+      // étiquette incomplète : on complète la palette en cours code par code
       codes.forEach(addCode);
-      const lus = codes.length + " code(s) lu(s)";
-      if (state.pallets.length > before) { if (!isFull()) setStatus(lus + " — palette " + state.pallets.length + "/" + expected() + " enregistrée.", "ok"); beep(true); }
-      else if (!pending) setStatus(lus + ". " + (curComplete() ? "Palette complète : validez-la." : "Complétez avec une autre photo ou la douchette."), curComplete() ? "ok" : "warn");
+      if (!curEmpty()) setStatus(codes.length + " code(s) lu(s) sur " + n + ". Reprenez la photo, ou complétez à la douchette.", "warn");
     } catch (err) {
       setStatus("Impossible de lire cette image (" + (err && err.message || err) + ").", "bad");
     }
@@ -645,20 +741,22 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     cv.width = w; cv.height = h;
     const ctx = cv.getContext("2d", { willReadFrequently: true });
     ctx.drawImage(src, 0, 0, w, h);
-    return ctx.getImageData(0, 0, w, h);
+    return { data: ctx.getImageData(0, 0, w, h), scale };
   }
   async function decodeImageFile(file) {
     const img = await loadImage(file);
-    const found = new Set();
+    let best = [];
     for (const maxSide of [1800, 2600, 1200]) {
-      (await readImageData(frameData(img, img.naturalWidth, img.naturalHeight, maxSide))).forEach((c) => found.add(c));
-      if (onlyLabelCodes([...found]).length >= 3) break;
+      const fd = frameData(img, img.naturalWidth, img.naturalHeight, maxSide);
+      const hits = (await readImageData(fd.data)).map((h) => ({ text: h.text, y: h.y / fd.scale, x: h.x / fd.scale }));
+      if (usable(hits).length > usable(best).length) best = hits;
+      if (usable(best).length >= keys().length) break;
     }
-    return [...found];
+    return best;
   }
 
   // ---- Scan en direct avec la caméra ----
-  const live = { stream: null, running: false, seen: new Map(), lastMsg: 0, torch: false, audio: null };
+  const live = { stream: null, running: false, seen: new Map(), lastMsg: 0, torch: false, audio: null, lastKey: "", lastOk: 0, prevPair: "" };
   const WINDOW_MS = 2500;
 
   function beep(ok) {
@@ -674,19 +772,24 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function liveMsg(text, kind) {
     const el = $("liveMsg"); el.textContent = text; el.className = "live-msg" + (kind ? " " + kind : "");
   }
+  function buildChips() {
+    const c = $("chips"); c.textContent = "";
+    keys().forEach((k) => { const s = document.createElement("span"); s.className = "chip"; s.id = "chip-" + k; s.textContent = M().short[k]; c.appendChild(s); });
+  }
   function liveChips(win) {
-    ["c1", "c2", "c3"].forEach((k) => { $("chip-" + k).classList.toggle("on", !!win[k]); });
-    $("liveCount").textContent = state.pallets.length + "/" + expected();
+    keys().forEach((k) => { const el = $("chip-" + k); if (el) el.classList.toggle("on", !!win[k]); });
+    $("liveCount").textContent = countTxt();
   }
 
   async function startLive() {
-    if (!expected()) { refuse("Indiquez d'abord le nombre de palettes du camion."); return; }
+    if (!ready()) { refuse(notReadyMsg()); return; }
     if (isFull()) { refuse(fullMsg()); return; }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setStatus("La caméra en direct n'est pas disponible ici. Utilisez « Photographier l'étiquette » : le résultat est le même.", "warn");
       return;
     }
     try { live.audio = live.audio || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+    buildChips();
     $("liveView").hidden = false;
     document.body.style.overflow = "hidden";
     liveMsg("Démarrage de la caméra…", "");
@@ -705,9 +808,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     $("torchBtn").hidden = !caps.torch;
     if (caps.focusMode && caps.focusMode.includes("continuous")) track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(() => {});
     try { await zx(); } catch (e) { liveMsg("Le lecteur de codes-barres n'a pas pu se charger.", "bad"); return; }
-    live.seen.clear();
+    live.seen.clear(); live.prevPair = "";
     live.running = true;
-    liveMsg("Visez l'étiquette entière : les 3 codes-barres dans le cadre.", "");
+    liveMsg("Visez l'étiquette entière : les " + keys().length + " codes-barres dans le cadre.", "");
     liveChips({});
     loop();
   }
@@ -717,44 +820,54 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     while (live.running) {
       if (v.readyState >= 2 && v.videoWidth) {
         let codes = [];
-        try { codes = onlyLabelCodes(await readImageData(frameData(v, v.videoWidth, v.videoHeight, 1600))); } catch (e) {}
-        const now = Date.now();
-        codes.forEach((c) => live.seen.set(c, now));
-        handleLive(now);
+        try { codes = usable((await readImageData(frameData(v, v.videoWidth, v.videoHeight, 1600).data))); } catch (e) {}
+        handleLive(codes, Date.now());
       }
       await new Promise((r) => setTimeout(r, 60));
     }
   }
 
-  function handleLive(now) {
-    for (const [c, t] of live.seen) if (now - t > WINDOW_MS) live.seen.delete(c);
-    const win = {};
-    // le plus récent de chaque type
-    [...live.seen.entries()].sort((a, b) => a[1] - b[1]).forEach(([c]) => { win[classify(c)] = c; });
-    liveChips(win);
-    if (!win.c3) return;
-    if (win.c3 === live.lastSSCC && now - live.lastOk < 4000) return; // l'étiquette qu'on vient d'enregistrer
-    if (dupIndex(win.c3) >= 0) {
-      if (now - live.lastMsg > 1500) { liveMsg("Déjà scannée : palette n° " + (dupIndex(win.c3) + 1) + ". Passez à la suivante.", "bad"); beep(false); live.lastMsg = now; }
+  function throttled(now, text, kind, bad) {
+    if (now - live.lastMsg > 1500) { liveMsg(text, kind); if (bad) beep(false); live.lastMsg = now; }
+  }
+
+  function handleLive(codes, now) {
+    let pal;
+    if (state.mode === "GG") {
+      // les 3 codes peuvent arriver sur des images différentes : fenêtre de 2,5 s
+      codes.forEach((c) => live.seen.set(c, now));
+      for (const [c, t] of live.seen) if (now - t > WINDOW_MS) live.seen.delete(c);
+      pal = emptyPallet();
+      [...live.seen.entries()].sort((a, b) => a[1] - b[1]).forEach(([c]) => { const k = classifyGG(c); if (k) pal[k] = c; });
+    } else {
+      // HENNESSY : les 2 codes doivent être sur la même image (ordre haut → bas), et confirmés sur 2 images
+      pal = emptyPallet();
+      if (codes.length >= 2) { pal.c1 = codes[0]; pal.c2 = codes[1]; }
+      else if (codes.length === 1) pal.c1 = codes[0];
+      const pair = pal.c1 && pal.c2 ? pal.c1 + "|" + pal.c2 : "";
+      const confirmed = pair && pair === live.prevPair;
+      live.prevPair = pair;
+      if (!confirmed) { liveChips(pal); if (!pair && now - live.lastMsg > 1500 && codes.length === 1) liveMsg("Un seul code vu : reculez un peu pour avoir les 2 codes dans le cadre.", ""); return; }
+    }
+    liveChips(pal);
+    const complete = keys().every((k) => pal[k]);
+    const key = keyOf(pal);
+    if (!complete) {
+      if (state.mode === "GG" && pal.c3) throttled(now, "Encore " + ["c1", "c2"].filter((k) => !pal[k]).map((k) => M().short[k]).join(" et ") + "…", "");
       return;
     }
-    if (isFull()) {
-      if (now - live.lastMsg > 1500) { liveMsg("Camion complet (" + state.pallets.length + "/" + expected() + "). Aucune palette en plus.", "bad"); beep(false); live.lastMsg = now; }
-      return;
-    }
-    if (win.c1 && win.c2) {
-      state.cur = { c1: win.c1, c2: win.c2, c3: win.c3, c4: "" };
-      commit(false);
-      beep(true);
-      liveMsg("Palette " + state.pallets.length + "/" + expected() + " enregistrée ✓  SSCC …" + win.c3.slice(-6), "ok");
-      if (isFull()) { liveMsg("Camion complet : " + state.pallets.length + "/" + expected() + " ✓", "ok"); setTimeout(() => { if (live.running) stopLive(); }, 1800); }
-      live.lastMsg = now; live.lastSSCC = win.c3; live.lastOk = now;
-      const vw = $("liveView"); vw.classList.remove("flash-ok"); void vw.offsetWidth; vw.classList.add("flash-ok");
-      live.seen.clear();
-      liveChips({});
-    } else if (now - live.lastMsg > 1500) {
-      liveMsg("Encore " + ["c1", "c2"].filter((k) => !win[k]).map((k) => SHORT[k]).join(" et ") + "…", "");
-    }
+    if (key === live.lastKey && now - live.lastOk < 4000) return; // l'étiquette qu'on vient d'enregistrer
+    const d = dupIndex(key);
+    if (d >= 0) { throttled(now, "Déjà scannée : palette n° " + (d + 1) + ". Passez à la suivante.", "bad", true); return; }
+    if (isFull()) { throttled(now, "Camion complet (" + countTxt() + "). Aucune palette en plus.", "bad", true); return; }
+    const r = applyLabel(keys().map((k) => pal[k]), true);
+    if (!r.done) return;
+    liveMsg("Palette " + countTxt() + " enregistrée ✓", "ok");
+    if (isFull()) { liveMsg("Camion complet : " + countTxt() + " ✓", "ok"); setTimeout(() => { if (live.running) stopLive(); }, 1800); }
+    live.lastMsg = now; live.lastKey = key; live.lastOk = now;
+    const vw = $("liveView"); vw.classList.remove("flash-ok"); void vw.offsetWidth; vw.classList.add("flash-ok");
+    live.seen.clear(); live.prevPair = "";
+    liveChips({});
   }
 
   function stopLive() {
@@ -779,18 +892,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   document.addEventListener("visibilitychange", () => { if (document.hidden && live.running) stopLive(); });
 
   // ---- Export ----
-  function rows() {
-    const dd = dateDDMMYYYY(state.date);
-    return state.pallets.map((p) => [dd, p.c1, p.c2, p.c3, p.c4]);
-  }
-  const HEAD = ["date reception", "Code barre 1 code produit", "Code barre 2 GTIN /Qte Pal / N° lot", "Code barre 3  SSCC", "aaaammjjhh"];
+  const rows = () => state.pallets.map((p) => M().row(p));
 
   async function buildXlsx() {
+    const m = M();
     const wb = new ExcelJS.Workbook();
-    wb.creator = "Réception Palettes GG";
-    const ws = wb.addWorksheet("Réception", { views: [{ state: "frozen", ySplit: 1 }] });
-    ws.columns = [{ width: 16 }, { width: 30 }, { width: 42 }, { width: 30 }, { width: 20 }];
-    const hr = ws.addRow(HEAD);
+    wb.creator = m.title.join(" ");
+    const ws = wb.addWorksheet(m.sheet, { views: [{ state: "frozen", ySplit: 1 }] });
+    ws.columns = m.widths.map((w) => ({ width: w }));
+    const hr = ws.addRow(m.head);
     hr.eachCell((c) => {
       c.font = { bold: true, name: "Calibri", size: 11 };
       c.border = { bottom: { style: "thin", color: { argb: "FF7F7F7F" } } };
@@ -798,20 +908,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     });
     rows().forEach((r) => {
       const row = ws.addRow(r);
-      for (let i = 1; i <= 5; i++) {
+      for (let i = 1; i <= m.head.length; i++) {
         const c = row.getCell(i);
         c.numFmt = "@";
         c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFF00" } };
         c.font = { name: "Calibri", size: 11 };
       }
     });
-    ws.autoFilter = { from: "A1", to: "E1" };
+    ws.autoFilter = { from: "A1", to: String.fromCharCode(64 + m.head.length) + "1" };
     return await wb.xlsx.writeBuffer();
   }
 
   // Le fichier est préparé à l'avance : au clic, le partage s'ouvre immédiatement (exigé par iPhone/Android)
   let prepared = { sig: "", buf: null };
-  function sig() { return state.date + "|" + JSON.stringify(state.pallets); }
+  function sig() { return state.mode + "|" + state.date + "|" + state.of + "|" + JSON.stringify(state.pallets); }
   let prepTimer = null;
   function prepare() {
     clearTimeout(prepTimer);
@@ -823,8 +933,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     }, 150);
   }
 
+  const fileName = () => M().file();
+  const subject = () => M().subject();
+
   function openMailto(name) {
-    const body = "Bonjour,\n\nCi-joint la réception du " + dateDDMMYYYY(state.date) + " : " + state.pallets.length + " palette(s).\n\n(Joindre le fichier " + name + " qui vient d'être téléchargé.)";
+    const body = "Bonjour,\n\n" + M().body() + "\n\n(Joindre le fichier " + name + " qui vient d'être téléchargé.)";
     const a = document.createElement("a");
     a.href = "mailto:" + EMAIL_LIST.join(",") + "?subject=" + encodeURIComponent(subject()) + "&body=" + encodeURIComponent(body);
     document.body.appendChild(a); a.click(); a.remove();
@@ -838,7 +951,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   async function doExport() {
     if (!state.pallets.length) return;
     if (!window.ExcelJS) { setStatus("Le générateur Excel n'a pas pu se charger. Vérifiez la connexion puis rouvrez l'application.", "bad"); return; }
-    const pendingNote = (state.cur.c1 || state.cur.c2 || state.cur.c3) ? " Attention : la palette en cours n'est pas validée et n'est pas dans le fichier." : "";
+    const pendingNote = !curEmpty() ? " Attention : la palette en cours n'est pas validée et n'est pas dans le fichier." : "";
     const name = fileName();
     let buf = prepared.sig === sig() ? prepared.buf : null;
     if (!buf) { try { buf = await buildXlsx(); } catch (e) { setStatus("Impossible de créer le fichier Excel.", "bad"); return; } }
@@ -848,11 +961,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // Téléphone : ouvre le partage -> choisir Mail / Gmail / Outlook, le fichier est déjà joint
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
-        await navigator.share({
-          files: [file],
-          title: subject(),
-          text: "Bonjour,\n\nCi-joint la réception du " + dateDDMMYYYY(state.date) + " : " + state.pallets.length + " palette(s).\n\nDestinataires : " + EMAIL_TO
-        });
+        await navigator.share({ files: [file], title: subject(), text: "Bonjour,\n\n" + M().body() + "\n\nDestinataires : " + EMAIL_TO });
         setStatus("E-mail préparé avec " + name + ". Destinataires à mettre : " + EMAIL_TO + " (bouton « Copier les adresses »)." + pendingNote, "ok");
       } catch (e) {
         if (e && e.name === "AbortError") setStatus("Envoi annulé." + pendingNote, "warn");
@@ -864,7 +973,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     downloadFile(buf, name);
     openMailto(name);
     setStatus("Fichier " + name + " téléchargé et e-mail ouvert pour " + EMAIL_TO + " : joignez le fichier depuis Téléchargements." + pendingNote, "ok");
-
   }
 
   function downloadFile(buf, name) {
@@ -874,26 +982,23 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
 
-  function fileName() { return "reception_palettes_GG_" + dateDDMMYYYY(state.date) + ".xlsx"; }
-  function subject() { return "Réception Palettes GG - " + dateDDMMYYYY(state.date) + " - " + state.pallets.length + " palette(s)"; }
   function b64(buf) {
     const bytes = new Uint8Array(buf); let bin = "";
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
     return btoa(bin);
   }
   async function sendViaRelay(buf, name) {
-    const mailStatus = (m, k) => setStatus(m, k);
     try {
       const res = await fetch(state.settings.relay, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ key: RELAY_KEY, filename: name, subject: subject(), count: state.pallets.length, date: dateDDMMYYYY(state.date), data: b64(buf) })
+        body: JSON.stringify({ key: RELAY_KEY, filename: name, subject: subject(), count: state.pallets.length, date: state.mode === "GG" ? dateDDMMYYYY(state.date) : "OF " + state.of, data: b64(buf) })
       });
       const j = await res.json().catch(() => ({}));
-      if (j.ok) { mailStatus("E-mail envoyé à " + EMAIL_TO + " avec " + name + ".", "ok"); return true; }
-      mailStatus("L'envoi automatique a été refusé (" + (j.error || "réponse " + res.status) + "). Vérifiez le service d'envoi dans Réglages.", "bad");
+      if (j.ok) { setStatus("E-mail envoyé à " + EMAIL_TO + " avec " + name + ".", "ok"); return true; }
+      setStatus("L'envoi automatique a été refusé (" + (j.error || "réponse " + res.status) + "). Vérifiez le service d'envoi dans Réglages.", "bad");
     } catch (e) {
-      mailStatus("L'e-mail n'a pas pu partir (pas de réseau ou service d'envoi injoignable). Réessayez avec « Envoyer par e-mail ».", "bad");
+      setStatus("L'e-mail n'a pas pu partir (pas de réseau ou service d'envoi injoignable). Réessayez avec « Envoyer l'Excel par e-mail ».", "bad");
     }
     return false;
   }
@@ -906,7 +1011,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     catch (e) { setStatus("Destinataires : " + EMAIL_TO, "warn"); }
   };
   $("copyBtn").onclick = async () => {
-    const tsv = [HEAD].concat(rows()).map((r) => r.join("\t")).join("\n");
+    const tsv = [M().head].concat(rows()).map((r) => r.join("\t")).join("\n");
     try { await navigator.clipboard.writeText(tsv); setStatus("Tableau copié. Collez-le dans Excel (colonnes au format Texte pour garder les zéros).", "ok"); }
     catch (e) {
       const ta = document.createElement("textarea"); ta.value = tsv; ta.setAttribute("aria-label", "Tableau à copier"); ta.style.width = "100%"; ta.rows = 6;
@@ -915,31 +1020,52 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     }
   };
 
-  $("validateBtn").onclick = () => { commit(false); focusScan(); };
-  $("clearCurBtn").onclick = () => { state.cur = emptyPallet(); pending = null; save(); render(); setStatus("Palette en cours vidée.", ""); focusScan(); };
-  let editingExpected = false;
-  function saveExpected() {
-    const n = parseInt($("expectedInput").value, 10);
-    if (!(n > 0 && n < 1000)) { setStatus("Entrez un nombre de palettes valide (1 ou plus).", "bad"); $("expectedInput").focus(); return; }
-    if (n < state.pallets.length) { setStatus("Déjà " + state.pallets.length + " palettes scannées : le nombre ne peut pas être inférieur. Supprimez d'abord les palettes en trop.", "bad"); return; }
-    state.expected = n; editingExpected = false; save(); render();
-    setStatus(state.pallets.length ? "Nombre mis à jour : " + state.pallets.length + "/" + n + "." : "C'est parti : " + n + " palette(s) à scanner.", "ok");
+  $("validateBtn").onclick = () => { commit(); focusScan(); };
+  $("clearCurBtn").onclick = () => { state.cur = emptyPallet(); save(); render(); setStatus("Palette en cours vidée.", ""); focusScan(); };
+
+  // ---- Écran de départ ----
+  document.querySelectorAll(".mode").forEach((b) => b.onclick = () => {
+    if (state.pallets.length || !curEmpty()) return;
+    pickedMode = b.dataset.mode;
+    state.mode = pickedMode; save(); setStatus("", "");
+    render();
+    (pickedMode === "GG" ? $("expectedInput") : $("ofInput")).focus();
+  });
+  function startScan() {
+    const mode = (state.pallets.length || !curEmpty()) ? state.mode : pickedMode;
+    if (mode === "GG") {
+      const n = parseInt($("expectedInput").value, 10);
+      if (!(n > 0 && n < 1000)) { setStatus("Entrez un nombre de palettes valide (1 ou plus).", "bad"); $("expectedInput").focus(); return; }
+      if (n < state.pallets.length) { setStatus("Déjà " + state.pallets.length + " palettes scannées : le nombre ne peut pas être inférieur. Supprimez d'abord les palettes en trop.", "bad"); return; }
+      state.mode = "GG"; state.expected = n;
+    } else {
+      const of = $("ofInput").value.trim();
+      if (!of) { setStatus("Entrez le N° de fiche / OF.", "bad"); $("ofInput").focus(); return; }
+      state.mode = "HEN"; state.of = of;
+    }
+    const wasEditing = editingSetup;
+    editingSetup = false; save(); render();
+    if (state.mode === "GG") setStatus(wasEditing ? "Nombre mis à jour : " + countTxt() + "." : "C'est parti : " + state.expected + " palette(s) à scanner.", "ok");
+    else setStatus(wasEditing ? "N° de fiche / OF mis à jour : " + state.of + "." : "C'est parti : départ HENNESSY, OF " + state.of + ".", "ok");
     focusScan();
   }
-  $("startBtn").onclick = saveExpected;
-  $("expectedInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveExpected(); } });
-  $("editExpectedBtn").onclick = () => { editingExpected = true; render(); $("expectedInput").focus(); $("expectedInput").select(); };
+  $("startBtnGG").onclick = startScan;
+  $("startBtnHEN").onclick = startScan;
+  $("expectedInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); startScan(); } });
+  $("ofInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); startScan(); } });
+  $("editSetupBtn").onclick = () => {
+    editingSetup = true; pickedMode = state.mode; render();
+    const el = state.mode === "GG" ? $("expectedInput") : $("ofInput"); el.focus(); el.select();
+  };
   $("resetBtn").onclick = () => { confirmMode = "reset"; render(); };
   $("dateInput").onchange = (e) => { state.date = e.target.value || todayISO(); save(); render(); };
-  document.querySelectorAll('input[name="c5"]').forEach((r) => r.onchange = () => { state.settings.c5 = r.value; save(); render(); });
-  $("autoNext").onchange = (e) => { state.settings.autoNext = e.target.checked; save(); };
 
   render();
   focusScan();
   if ("serviceWorker" in navigator && location.protocol === "https:") {
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
-  window.__scanTest = { clean, classify, addCode, state: () => state, decodeImageFile, buildXlsx };
+  window.__scanTest = { clean, addCode, state: () => state, decodeImageFile, buildXlsx, applyLabel, usable };
 })();
 </script>
 
