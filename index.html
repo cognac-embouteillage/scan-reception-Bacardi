@@ -191,6 +191,21 @@ details.settings summary { cursor: pointer; font-weight: 600; font-size: .9rem; 
 .dmg-tag { display: inline-block; font: 600 .68rem var(--font-body); text-transform: uppercase; letter-spacing: .05em; padding: 2px 6px; border-radius: 4px; background: var(--bad); color: #fff; margin-left: 6px; vertical-align: middle; }
 td.del { display: flex; gap: 4px; justify-content: flex-end; }
 td.del .dmg-row { color: var(--bad); }
+.flash-ov { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px)); background: rgba(10, 14, 20, .5); cursor: pointer; }
+.flash-card { width: min(100%, 420px); border-radius: 20px; padding: 28px 20px 24px; text-align: center; color: #fff; box-shadow: 0 20px 60px rgba(0,0,0,.45); display: grid; gap: 8px; justify-items: center; }
+.flash-ov.ok .flash-card { background: #1d7a46; }
+.flash-ov.bad .flash-card { background: #b3261e; }
+.flash-ov.warn .flash-card { background: #9a5b00; }
+.flash-icon { width: 96px; height: 96px; border-radius: 50%; background: rgba(255,255,255,.18); border: 4px solid #fff; display: grid; place-items: center; font: 700 3.6rem/1 var(--font-body); }
+.flash-title { font: 700 2.3rem/1.05 var(--font-display); text-transform: uppercase; letter-spacing: .02em; margin: 6px 0 0; text-wrap: balance; }
+.flash-detail { font: 500 1.05rem/1.4 var(--font-body); margin: 0; opacity: .95; overflow-wrap: anywhere; }
+.flash-hint { font-size: .78rem; opacity: .75; margin: 4px 0 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .flash-ov .flash-card { animation: pop .22s ease-out; }
+  .flash-ov.bad .flash-card { animation: pop .22s ease-out, shake .4s .22s ease-in-out; }
+  @keyframes pop { from { transform: scale(.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @keyframes shake { 0%,100% { transform: translateX(0); } 20%,60% { transform: translateX(-10px); } 40%,80% { transform: translateX(10px); } }
+}
 .confirm.ok-box { background: var(--ok-bg); color: var(--ok); }
 @media (prefers-reduced-motion: no-preference) { .flash { animation: flash .5s ease-out; } @keyframes flash { from { box-shadow: 0 0 0 4px var(--yellow); } to { box-shadow: 0 0 0 0 transparent; } } }
 </style>
@@ -217,19 +232,19 @@ td.del .dmg-row { color: var(--bad); }
     <h2 id="h-setup">Nouveau scan</h2>
     <div class="modes" id="modeChoice" role="radiogroup" aria-label="Type de scan">
       <button type="button" class="mode" data-mode="GG" role="radio">
-        <b>Réception GG</b><small>3 codes-barres · nombre de palettes fixé</small>
+        <b>Réception GG</b><small>3 codes-barres · nombre de fiches palettes fixé</small>
       </button>
       <button type="button" class="mode" data-mode="HEN" role="radio">
         <b>Départ HENNESSY</b><small>2 codes-barres · N° de fiche / OF</small>
       </button>
     </div>
     <div id="setupGG">
-      <label class="lbl" for="expectedInput">Nombre de palettes à scanner</label>
+      <label class="lbl" for="expectedInput">Nombre de fiches palettes à scanner</label>
       <div class="scan-row">
         <input id="expectedInput" class="big-input" type="number" inputmode="numeric" min="1" max="999" step="1" placeholder="ex. 26">
         <button class="btn-primary" id="startBtnGG" type="button">Commencer le scan</button>
       </div>
-      <p class="help">Indiquez le nombre de palettes du bon de livraison. L'application bloquera les palettes en trop et signalera celles qui manquent.</p>
+      <p class="help">Indiquez le nombre de fiches palettes du bon de livraison. L'application bloquera les palettes en trop et signalera celles qui manquent.</p>
     </div>
     <div id="setupHEN" hidden>
       <label class="lbl" for="ofInput">N° de fiche / OF</label>
@@ -339,6 +354,15 @@ td.del .dmg-row { color: var(--bad); }
       <p class="help" id="rulesHelp"></p>
     </div>
   </details>
+</div>
+
+<div id="flashOv" class="flash-ov" role="alert" aria-live="assertive" hidden>
+  <div class="flash-card">
+    <div class="flash-icon" id="flashIcon" aria-hidden="true"></div>
+    <p class="flash-title" id="flashTitle"></p>
+    <p class="flash-detail" id="flashDetail"></p>
+    <p class="flash-hint">Touchez pour fermer</p>
+  </div>
 </div>
 
 <div id="liveView" class="live" hidden>
@@ -505,7 +529,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function ready() { return state.mode === "GG" ? expected() > 0 : !!state.of; }
   function isFull() { return expected() > 0 && state.pallets.length >= expected(); }
   function dupIndex(key) { return key ? state.pallets.findIndex((p) => keyOf(p) === key) : -1; }
-  function refuse(msg) { setStatus(msg, "bad"); beep(false); }
+  function refuse(msg, title) { setStatus(msg, "bad"); beep(false); if (title) flash("bad", title, msg); }
+  // Grand message de validation / d'erreur en plein écran
+  let flashTimer = null;
+  function flash(kind, title, detail) {
+    const ov = $("flashOv");
+    ov.className = "flash-ov " + kind;
+    $("flashIcon").textContent = kind === "ok" ? "✓" : kind === "bad" ? "✕" : "!";
+    $("flashTitle").textContent = title;
+    $("flashDetail").textContent = detail || "";
+    ov.hidden = false;
+    const card = ov.firstElementChild; card.style.animation = "none"; void card.offsetWidth; card.style.animation = "";
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => { ov.hidden = true; }, kind === "ok" ? 1600 : 3000);
+  }
   function notReadyMsg() { return state.mode === "GG" ? "Indiquez d'abord le nombre de palettes du camion." : "Indiquez d'abord le N° de fiche / OF."; }
   function fullMsg() { return "Camion complet (" + state.pallets.length + "/" + expected() + ") : impossible d'ajouter une palette. Si le bon est faux, touchez « Modifier »."; }
   function dupMsg(i) { const o = state.mode === "HEN" && state.pallets[i].of ? " (OF " + state.pallets[i].of + ")" : ""; return "Fiche déjà scannée : c'est la palette n° " + (i + 1) + o + ". Elle n'est pas ajoutée une 2e fois."; }
@@ -519,7 +556,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const code = clean(raw);
     if (!code) return;
     if (!ready()) { refuse(notReadyMsg()); return; }
-    if (isFull()) { refuse(fullMsg()); return; }
+    if (isFull()) { refuse(fullMsg(), "Camion complet"); return; }
     if (keys().some((k) => state.cur[k] === code)) { setStatus("Déjà scanné sur cette palette : " + code, "warn"); return; }
 
     let slot;
@@ -529,7 +566,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (slot === "c3" && dupIndex(code) >= 0) {
         const had = !curEmpty();
         if (had) { state.cur = emptyPallet(); save(); render(); }
-        refuse(dupMsg(dupIndex(code)) + (had ? " Palette en cours effacée." : ""));
+        refuse(dupMsg(dupIndex(code)) + (had ? " Palette en cours effacée." : ""), "Déjà scannée");
         return;
       }
       if (state.cur[slot]) setStatus(M().short[slot] + " remplacé : " + code, "warn");
@@ -537,7 +574,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (isSSCC(code) && dupIndex(code) >= 0) {
         const had = !curEmpty();
         if (had) { state.cur = emptyPallet(); save(); render(); }
-        refuse(dupMsg(dupIndex(code)) + (had ? " Palette en cours effacée." : ""));
+        refuse(dupMsg(dupIndex(code)) + (had ? " Palette en cours effacée." : ""), "Déjà scannée");
         return;
       }
       slot = keys().find((k) => !state.cur[k]);
@@ -551,19 +588,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   function commit() {
     const c = state.cur;
     if (curEmpty()) { setStatus("La palette en cours est vide.", "warn"); return false; }
-    if (isFull()) { refuse(fullMsg()); return false; }
+    if (isFull()) { refuse(fullMsg(), "Camion complet"); return false; }
     const row = { c1: c.c1, c2: c.c2, c3: state.mode === "GG" ? c.c3 : "", c4: stamp(), t: Date.now() };
     if (state.mode === "HEN") row.of = state.of;
     row.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const d = dupIndex(keyOf(row));
-    if (d >= 0) { state.cur = emptyPallet(); save(); render(); refuse(dupMsg(d)); return false; }
+    if (d >= 0) { state.cur = emptyPallet(); save(); render(); refuse(dupMsg(d), "Déjà scannée"); return false; }
     state.pallets.push(row);
     state.cur = emptyPallet();
     save();
     const missing = keys().filter((k) => !row[k]).map((k) => M().short[k]);
-    if (missing.length) setStatus("Palette " + countTxt() + " enregistrée, incomplète (manque : " + missing.join(", ") + ").", "warn");
-    else setStatus("Palette " + countTxt() + " enregistrée.", "ok");
-    if (isFull()) setStatus("Camion complet : " + countTxt() + " palettes ✓. Vous pouvez envoyer l'Excel.", "ok");
+    const ident = state.mode === "GG" ? (row.c3 ? "SSCC …" + row.c3.slice(-6) : "") : "OF " + row.of;
+    if (missing.length) { setStatus("Palette " + countTxt() + " enregistrée, incomplète (manque : " + missing.join(", ") + ").", "warn"); flash("warn", "Palette " + countTxt() + " incomplète", "Manque : " + missing.join(", ")); }
+    else { setStatus("Palette " + countTxt() + " enregistrée.", "ok"); flash("ok", "Palette " + countTxt() + " OK", ident); }
+    if (isFull()) { setStatus("Camion complet : " + countTxt() + " palettes ✓. Vous pouvez envoyer l'Excel.", "ok"); flash("ok", "Camion complet", countTxt() + " fiches palettes scannées. Vous pouvez envoyer l'Excel."); }
     beep(true);
     render(null, true);
     return true;
@@ -595,7 +633,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     });
     $("setupGG").hidden = setupMode !== "GG";
     $("setupHEN").hidden = setupMode !== "HEN";
-    $("h-setup").textContent = editingSetup ? (setupMode === "GG" ? "Nombre de palettes" : "Changer de fiche / OF") : "Nouveau scan";
+    $("h-setup").textContent = editingSetup ? (setupMode === "GG" ? "Nombre de fiches palettes" : "Changer de fiche / OF") : "Nouveau scan";
     const curOfCount = state.of ? ofCount(state.of) : 0;
     const editHEN = editingSetup && setupMode === "HEN" && state.pallets.length > 0;
     $("helpHEN").textContent = editHEN
@@ -799,7 +837,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     e.target.value = "";
     if (!f) return;
     if (!ready()) { refuse(notReadyMsg()); return; }
-    if (isFull()) { refuse(fullMsg()); return; }
+    if (isFull()) { refuse(fullMsg(), "Camion complet"); return; }
     setStatus("Lecture de la photo…", "");
     try {
       const codes = usable(await decodeImageFile(f));
@@ -807,8 +845,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if (!codes.length) { refuse("Aucun code-barres lu. Reprenez la photo bien en face, l'étiquette entière et nette."); return; }
       if (state.mode === "HEN" && codes.length > n) setStatus(codes.length + " codes-barres sur la photo : seuls les 2 plus hauts sont pris. Cadrez uniquement l'étiquette si ce n'est pas bon.", "warn");
       const r = applyLabel(codes, false);
-      if (r.dup !== undefined) { refuse(dupMsg(r.dup)); return; }
-      if (r.full) { refuse(fullMsg()); return; }
+      if (r.dup !== undefined) { refuse(dupMsg(r.dup), "Déjà scannée"); return; }
+      if (r.full) { refuse(fullMsg(), "Camion complet"); return; }
       if (r.done) { if (state.mode === "HEN" && codes.length > n) setStatus("Palette " + countTxt() + " enregistrée. Attention : " + codes.length + " codes-barres sur la photo, les 2 plus hauts ont été pris.", "warn"); return; }
       // étiquette incomplète : on complète la palette en cours code par code
       codes.forEach(addCode);
@@ -856,10 +894,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     try {
       const ac = live.audio || (live.audio = new (window.AudioContext || window.webkitAudioContext)());
       const o = ac.createOscillator(), g = ac.createGain();
-      o.frequency.value = ok ? 1320 : 330; o.type = "square"; g.gain.value = 0.08;
-      o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + (ok ? 0.12 : 0.3));
+      o.frequency.value = ok ? 1320 : 300; o.type = "square"; g.gain.value = ok ? 0.08 : 0.12;
+      o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime + (ok ? 0.12 : 0.25));
+      if (!ok) { const o2 = ac.createOscillator(); o2.frequency.value = 220; o2.type = "square"; o2.connect(g); o2.start(ac.currentTime + 0.32); o2.stop(ac.currentTime + 0.62); }
     } catch (e) {}
-    try { navigator.vibrate && navigator.vibrate(ok ? 120 : [80, 60, 80]); } catch (e) {}
+    try { navigator.vibrate && navigator.vibrate(ok ? 150 : [200, 100, 200, 100, 200]); } catch (e) {}
   }
 
   function liveMsg(text, kind) {
@@ -876,7 +915,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   async function startLive() {
     if (!ready()) { refuse(notReadyMsg()); return; }
-    if (isFull()) { refuse(fullMsg()); return; }
+    if (isFull()) { refuse(fullMsg(), "Camion complet"); return; }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setStatus("La caméra en direct n'est pas disponible ici. Utilisez « Photographier l'étiquette » : le résultat est le même.", "warn");
       return;
@@ -951,8 +990,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     }
     if (key === live.lastKey && now - live.lastOk < 4000) return; // l'étiquette qu'on vient d'enregistrer
     const d = dupIndex(key);
-    if (d >= 0) { throttled(now, "Déjà scannée : palette n° " + (d + 1) + ". Passez à la suivante.", "bad", true); return; }
-    if (isFull()) { throttled(now, "Camion complet (" + countTxt() + "). Aucune palette en plus.", "bad", true); return; }
+    if (d >= 0) { if (now - live.lastMsg > 1500) flash("bad", "Déjà scannée", dupMsg(d)); throttled(now, "Déjà scannée : palette n° " + (d + 1) + ". Passez à la suivante.", "bad", true); return; }
+    if (isFull()) { if (now - live.lastMsg > 1500) flash("bad", "Camion complet", fullMsg()); throttled(now, "Camion complet (" + countTxt() + "). Aucune palette en plus.", "bad", true); return; }
     const r = applyLabel(keys().map((k) => pal[k]), true);
     if (!r.done) return;
     liveMsg("Palette " + countTxt() + " enregistrée ✓", "ok");
@@ -1290,6 +1329,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   $("autoMail").onchange = (e) => { state.settings.autoMail = e.target.checked; save(); };
   $("relayInput").onchange = (e) => { state.settings.relay = e.target.value.trim(); save(); render(); };
 
+  $("flashOv").onclick = () => { clearTimeout(flashTimer); $("flashOv").hidden = true; };
   $("dlBtn").onclick = async () => {
     if (!state.pallets.length) return;
     if (!window.ExcelJS) { setStatus("Le générateur Excel n'a pas pu se charger : vérifiez que le fichier exceljs.min.js est bien en ligne, puis rouvrez l'application.", "bad"); return; }
@@ -1328,7 +1368,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const mode = (state.pallets.length || !curEmpty()) ? state.mode : pickedMode;
     if (mode === "GG") {
       const n = parseInt($("expectedInput").value, 10);
-      if (!(n > 0 && n < 1000)) { setStatus("Entrez un nombre de palettes valide (1 ou plus).", "bad"); $("expectedInput").focus(); return; }
+      if (!(n > 0 && n < 1000)) { setStatus("Entrez un nombre de fiches palettes valide (1 ou plus).", "bad"); $("expectedInput").focus(); return; }
       if (n < state.pallets.length) { setStatus("Déjà " + state.pallets.length + " palettes scannées : le nombre ne peut pas être inférieur. Supprimez d'abord les palettes en trop.", "bad"); return; }
       state.mode = "GG"; state.expected = n;
     } else {
@@ -1342,7 +1382,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     }
     const wasEditing = editingSetup;
     editingSetup = false; save(); render();
-    if (state.mode === "GG") setStatus(wasEditing ? "Nombre mis à jour : " + countTxt() + "." : "C'est parti : " + state.expected + " palette(s) à scanner.", "ok");
+    if (state.mode === "GG") setStatus(wasEditing ? "Nombre mis à jour : " + countTxt() + "." : "C'est parti : " + state.expected + " fiche(s) palette(s) à scanner.", "ok");
     else setStatus(wasEditing ? "OF en cours : " + state.of + ". Les palettes précédentes gardent leur OF (" + ofList().filter((o) => o !== state.of).join(", ") + ")." : "C'est parti : départ HENNESSY, OF " + state.of + ".", "ok");
     if (state.mode === "HEN" && wasEditing && !state.pallets.length) setStatus("OF en cours : " + state.of + ".", "ok");
     focusScan();
