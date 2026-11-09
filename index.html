@@ -842,17 +842,25 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     try {
       const codes = usable(await decodeImageFile(f));
       const n = keys().length;
-      if (!codes.length) { refuse("Aucun code-barres lu. Reprenez la photo bien en face, l'étiquette entière et nette."); return; }
+      if (!codes.length) { refuse("Aucun code-barres lu sur la photo. Reprenez-la bien en face, l'étiquette entière, nette et sans reflet.", "Palette non lue"); return; }
       if (state.mode === "HEN" && codes.length > n) setStatus(codes.length + " codes-barres sur la photo : seuls les 2 plus hauts sont pris. Cadrez uniquement l'étiquette si ce n'est pas bon.", "warn");
       const r = applyLabel(codes, false);
       if (r.dup !== undefined) { refuse(dupMsg(r.dup), "Déjà scannée"); return; }
       if (r.full) { refuse(fullMsg(), "Camion complet"); return; }
       if (r.done) { if (state.mode === "HEN" && codes.length > n) setStatus("Palette " + countTxt() + " enregistrée. Attention : " + codes.length + " codes-barres sur la photo, les 2 plus hauts ont été pris.", "warn"); return; }
       // étiquette incomplète : on complète la palette en cours code par code
+      const before = state.pallets.length;
       codes.forEach(addCode);
-      if (!curEmpty()) setStatus(codes.length + " code(s) lu(s) sur " + n + ". Reprenez la photo, ou complétez à la douchette.", "warn");
+      if (state.pallets.length === before && !curComplete()) {
+        if (!$("flashOv").hidden && $("flashOv").classList.contains("bad")) return; // un autre message d'erreur est déjà affiché (doublon…)
+        const m = M();
+        const lus = keys().filter((k) => state.cur[k]), manq = keys().filter((k) => !state.cur[k]);
+        const detail = lus.length + " code(s) lu(s) sur " + n + ". Manque : " + manq.map((k) => m.short[k]).join(", ") +
+          ". Reprenez la photo (de plus près, bien nette, sans reflet) ou scannez le code manquant à la douchette.";
+        refuse(detail, "Palette non lue");
+      }
     } catch (err) {
-      setStatus("Impossible de lire cette image (" + (err && err.message || err) + ").", "bad");
+      refuse("Impossible de lire cette photo (" + (err && err.message || err) + "). Reprenez-la.", "Palette non lue");
     }
   });
 
@@ -963,6 +971,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (now - live.lastMsg > 1500) { liveMsg(text, kind); if (bad) beep(false); live.lastMsg = now; }
   }
 
+  // Caméra : si une étiquette reste lue à moitié pendant 6 s, on prévient
+  function partialWatch(pal, complete, now) {
+    const got = keys().filter((k) => pal[k]).length;
+    if (complete || !got) { live.partialSince = 0; live.partialWarned = false; return; }
+    if (!live.partialSince) live.partialSince = now;
+    if (!live.partialWarned && now - live.partialSince > 6000) {
+      live.partialWarned = true;
+      const manq = keys().filter((k) => !pal[k]).map((k) => M().short[k]).join(", ");
+      flash("bad", "Palette non lue", got + " code(s) lu(s) sur " + keys().length + ". Manque : " + manq + ". Rapprochez-vous, tenez le téléphone bien en face, évitez les reflets du film.");
+      beep(false);
+    }
+  }
   function handleLive(codes, now) {
     let pal;
     if (state.mode === "GG") {
@@ -979,11 +999,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       const pair = pal.c1 && pal.c2 ? pal.c1 + "|" + pal.c2 : "";
       const confirmed = pair && pair === live.prevPair;
       live.prevPair = pair;
-      if (!confirmed) { liveChips(pal); if (!pair && now - live.lastMsg > 1500 && codes.length === 1) liveMsg("Un seul code vu : reculez un peu pour avoir les 2 codes dans le cadre.", ""); return; }
+      if (!confirmed) { liveChips(pal); partialWatch(pal, !!pair, now); if (!pair && now - live.lastMsg > 1500 && codes.length === 1) liveMsg("Un seul code vu : reculez un peu pour avoir les 2 codes dans le cadre.", ""); return; }
     }
     liveChips(pal);
     const complete = keys().every((k) => pal[k]);
     const key = keyOf(pal);
+    partialWatch(pal, complete, now);
     if (!complete) {
       if (state.mode === "GG" && pal.c3) throttled(now, "Encore " + ["c1", "c2"].filter((k) => !pal[k]).map((k) => M().short[k]).join(" et ") + "…", "");
       return;
