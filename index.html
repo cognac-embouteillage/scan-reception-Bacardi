@@ -206,6 +206,7 @@ td.del .dmg-row { color: var(--bad); }
   @keyframes pop { from { transform: scale(.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   @keyframes shake { 0%,100% { transform: translateX(0); } 20%,60% { transform: translateX(-10px); } 40%,80% { transform: translateX(10px); } }
 }
+.date-box input.date-old { border-color: var(--warn); background: var(--warn-bg); color: var(--warn); }
 .confirm.ok-box { background: var(--ok-bg); color: var(--ok); }
 @media (prefers-reduced-motion: no-preference) { .flash { animation: flash .5s ease-out; } @keyframes flash { from { box-shadow: 0 0 0 4px var(--yellow); } to { box-shadow: 0 0 0 0 transparent; } } }
 </style>
@@ -219,7 +220,7 @@ td.del .dmg-row { color: var(--bad); }
       <p class="sub" id="appSub"></p>
     </div>
     <div class="date-box" id="dateBox">
-      <label class="lbl" for="dateInput">Date réception</label>
+      <label class="lbl" for="dateInput" id="dateLbl">Date réception</label>
       <input type="date" id="dateInput">
     </div>
     <div class="date-box of-box" id="ofBox" hidden>
@@ -483,6 +484,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   if (state.settings.autoMail === undefined) state.settings.autoMail = true;
   if (!state.settings.relay) state.settings.relay = RELAY_URL_DEFAULT;
   if (state.of === undefined) state.of = "";
+  // Date de réception : toujours la date du jour tant qu'aucune palette n'est scannée
+  function refreshDate() {
+    if (!state.pallets.length && curEmpty0() && state.date !== todayISO()) { state.date = todayISO(); save(); return true; }
+    return false;
+  }
+  function curEmpty0() { return !state.cur || !(state.cur.c1 || state.cur.c2 || state.cur.c3); }
+  refreshDate();
   let confirmMode = null;
   let editingSetup = false;
   let pickedMode = state.mode;
@@ -618,6 +626,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     $("ofBox").hidden = state.mode !== "HEN" || !state.of;
     $("ofVal").textContent = state.of;
     $("dateInput").value = state.date;
+    const notToday = state.date !== todayISO();
+    $("dateInput").classList.toggle("date-old", notToday);
+    $("dateLbl").textContent = notToday ? "Date réception (≠ aujourd'hui)" : "Date réception";
 
     // écran de départ
     const setupOpen = !ready() || editingSetup;
@@ -1042,7 +1053,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     try { await track.applyConstraints({ advanced: [{ torch: live.torch }] }); } catch (e) { live.torch = false; }
     $("torchBtn").classList.toggle("on", live.torch);
   };
-  document.addEventListener("visibilitychange", () => { if (document.hidden && live.running) stopLive(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && live.running) stopLive();
+    if (!document.hidden && refreshDate()) render(); // appli restée ouverte depuis la veille
+  });
 
 
   // ---- Palettes abîmées : photos rattachées à une palette ----
@@ -1391,6 +1405,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       const n = parseInt($("expectedInput").value, 10);
       if (!(n > 0 && n < 1000)) { setStatus("Entrez un nombre de fiches palettes valide (1 ou plus).", "bad"); $("expectedInput").focus(); return; }
       if (n < state.pallets.length) { setStatus("Déjà " + state.pallets.length + " palettes scannées : le nombre ne peut pas être inférieur. Supprimez d'abord les palettes en trop.", "bad"); return; }
+      if (!editingSetup && !state.pallets.length) state.date = todayISO();
       state.mode = "GG"; state.expected = n;
     } else {
       const of = $("ofInput").value.trim();
