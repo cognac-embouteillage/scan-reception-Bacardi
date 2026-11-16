@@ -6,11 +6,12 @@
 <meta name="theme-color" content="#ffe500">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Palettes GG">
+<meta name="application-name" content="Scan GG/CDC/HY">
+<meta name="apple-mobile-web-app-title" content="Scan GG/CDC/HY">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest?v=2">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=2">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=2">
 <style>[hidden]{display:none!important}body{margin:0}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
 <title>Réception Palettes GG</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -207,6 +208,19 @@ td.del .dmg-row { color: var(--bad); }
   @keyframes shake { 0%,100% { transform: translateX(0); } 20%,60% { transform: translateX(-10px); } 40%,80% { transform: translateX(10px); } }
 }
 .date-box input.date-old { border-color: var(--warn); background: var(--warn-bg); color: var(--warn); }
+.send-ov { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 24px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px)); background: rgba(10, 14, 20, .55); }
+.send-card { width: min(100%, 460px); max-height: 90vh; overflow: auto; background: var(--surface); color: var(--ink); border-radius: 18px; padding: 20px; display: grid; gap: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.45); }
+.send-card h2 { font-size: 2rem; line-height: 1.1; text-align: center; text-transform: none; letter-spacing: 0; color: var(--ink); }
+.send-icon { justify-self: center; width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; background: var(--warn-bg); color: var(--warn); border: 4px solid var(--warn); font: 700 2.6rem/1 var(--font-display); }
+.send-card .actions button { min-height: 56px; font-size: 1.05rem; }
+.send-card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: .92rem; }
+.send-card dt { color: var(--muted); }
+.send-card dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.send-warn { padding: 10px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-weight: 600; font-size: .92rem; }
+.send-card .actions > * { flex: 1 1 140px; }
+.ejs { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px 12px; display: grid; gap: 6px; min-width: 0; }
+.ejs legend { font-weight: 600; padding: 0 4px; }
+.ejs-in { width: 100%; font: 400 .9rem var(--font-mono); padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
 .confirm.ok-box { background: var(--ok-bg); color: var(--ok); }
 @media (prefers-reduced-motion: no-preference) { .flash { animation: flash .5s ease-out; } @keyframes flash { from { box-shadow: 0 0 0 4px var(--yellow); } to { box-shadow: 0 0 0 0 transparent; } } }
 </style>
@@ -346,8 +360,19 @@ td.del .dmg-row { color: var(--bad); }
   <details class="settings panel">
     <summary>Réglages</summary>
     <div class="opts">
-      <label><input type="checkbox" id="autoMail" checked> <span>Si le service d'envoi est configuré, envoyer aussi directement à <b id="mailTo"></b></span></label>
-      <div>
+      <fieldset class="ejs">
+        <legend>Envoi par EmailJS</legend>
+        <p class="help" id="ejsHelp"></p>
+        <label class="lbl" for="ejsService">Service ID</label>
+        <input id="ejsService" class="ejs-in" type="text" autocomplete="off" spellcheck="false" placeholder="service_xxxxxxx">
+        <label class="lbl" for="ejsTemplate">Template ID</label>
+        <input id="ejsTemplate" class="ejs-in" type="text" autocomplete="off" spellcheck="false" placeholder="template_xxxxxxx">
+        <label class="lbl" for="ejsKey">Public Key</label>
+        <input id="ejsKey" class="ejs-in" type="text" autocomplete="off" spellcheck="false" placeholder="ex. AbCdEf123456">
+        <div class="actions"><button type="button" class="btn-sm" id="ejsTestBtn">Envoyer un e-mail de test</button></div>
+      </fieldset>
+      <label hidden><input type="checkbox" id="autoMail" checked> <span>Si le service d'envoi est configuré, envoyer aussi directement à <b id="mailTo"></b></span></label>
+      <div hidden>
         <label class="lbl" for="relayInput" style="display:block">Adresse du service d'envoi (Google Apps Script)</label>
         <input id="relayInput" type="url" placeholder="https://script.google.com/macros/s/…/exec" style="width:100%;font:400 .85rem var(--font-mono);padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)">
         <p class="help" id="relayHelp"></p>
@@ -355,6 +380,19 @@ td.del .dmg-row { color: var(--bad); }
       <p class="help" id="rulesHelp"></p>
     </div>
   </details>
+</div>
+
+<div id="sendOv" class="send-ov" role="dialog" aria-modal="true" aria-labelledby="h-send" hidden>
+  <div class="send-card">
+    <div class="send-icon" aria-hidden="true">!</div>
+    <h2 id="h-send">Êtes-vous sûr d'envoyer le fichier&nbsp;?</h2>
+    <div id="sendWarn" class="send-warn" hidden></div>
+    <dl id="sendRecap"></dl>
+    <div class="actions">
+      <button type="button" class="btn-ghost" id="sendCancel">Non, annuler</button>
+      <button type="button" class="btn-primary" id="sendOk">Oui, envoyer</button>
+    </div>
+  </div>
 </div>
 
 <div id="flashOv" class="flash-ov" role="alert" aria-live="assertive" hidden>
@@ -437,6 +475,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   const EMAIL_TO = EMAIL_LIST.join(", ");
   const RELAY_URL_DEFAULT = "";   // coller ici l'URL /exec du script Google pour la fixer pour tous les postes
   const RELAY_KEY = "GG-palettes";  // doit être identique à CLE dans le script Google
+  // ---- EmailJS : coller ici les 3 identifiants du compte pour les fixer sur tous les téléphones ----
+  const EMAILJS = { serviceId: "", templateId: "", publicKey: "" };
+  const EMAILJS_MAX = 49 * 1024; // taille max d'une requête EmailJS (offre gratuite : 50 Ko). À augmenter avec une offre payante.
 
   const $ = (id) => document.getElementById(id);
   const scanInput = $("scanInput");
@@ -678,6 +719,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     // réglages
     $("autoMail").checked = !!state.settings.autoMail;
+    [["ejsService", "ejsService"], ["ejsTemplate", "ejsTemplate"], ["ejsKey", "ejsKey"]].forEach(([id, k]) => { if (document.activeElement !== $(id)) $(id).value = ejsCfg()[k] || ""; });
+    $("ejsHelp").textContent = ejsOn()
+      ? "EmailJS est actif : « Envoyer l'Excel par e-mail » affiche un récapitulatif, puis envoie le fichier à " + EMAIL_TO + " sans ouvrir de messagerie."
+      : "Remplissez les 3 identifiants de votre compte EmailJS pour envoyer l'Excel directement depuis l'application. Sans eux, le bouton ouvre la messagerie du téléphone.";
+    $("ejsTestBtn").disabled = !ejsOn();
     $("mailTo").textContent = EMAIL_TO;
     if (document.activeElement !== $("relayInput")) $("relayInput").value = state.settings.relay || "";
     $("relayHelp").textContent = state.settings.relay
@@ -1219,7 +1265,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   // ---- Export ----
   const rows = () => state.pallets.map((p) => M().row(p));
 
-  async function buildXlsx() {
+  async function buildXlsx(opts) {
     const m = M();
     const wb = new ExcelJS.Workbook();
     wb.creator = m.title.join(" ");
@@ -1241,7 +1287,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       }
     });
     ws.autoFilter = { from: "A1", to: String.fromCharCode(64 + m.head.length) + "1" };
-    try { await addDmgSheet(wb); }
+    if (!(opts && opts.noPhotos)) try { await addDmgSheet(wb); }
     catch (e) { console.warn("photos non ajoutées", e); try { const w2 = wb.getWorksheet("Palettes abîmées"); if (w2) wb.removeWorksheet(w2.id); } catch (e2) {} }
     return await wb.xlsx.writeBuffer();
   }
@@ -1270,10 +1316,41 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     document.body.appendChild(a); a.click(); a.remove();
   }
 
+  const relayOn = () => !!(state.settings.autoMail && state.settings.relay);
   $("xlsxBtn").onclick = () => {
     if (!state.pallets.length) return;
-    if (expected() && state.pallets.length < expected()) { confirmMode = "short"; render(); $("confirmBox").scrollIntoView({ block: "center" }); return; }
-    doExport();
+    openSendConfirm(); // toujours : « Êtes-vous sûr d'envoyer le fichier ? »
+  };
+
+  // ---- Confirmation avant envoi (service d'envoi) ----
+  function openSendConfirm() {
+    const dl = $("sendRecap"); dl.textContent = "";
+    const add = (k, v) => { const dt = document.createElement("dt"); dt.textContent = k; const dd = document.createElement("dd"); dd.textContent = v; dl.append(dt, dd); };
+    add("Destinataires", EMAIL_TO);
+    add("Objet", subject());
+    if (state.mode === "GG") add("Date réception", dateDDMMYYYY(state.date));
+    else add("Fiches / OF", ofList().map((o) => o + " (" + ofCount(o) + " pal.)").join(", "));
+    add("Palettes", countTxt());
+    const dm = dmgList().length;
+    if (dm) add("Palettes abîmées", dm + " (photos jointes dans l'Excel)");
+    add("Fichier", fileName());
+    add("Envoi", ejsOn() ? "Direct, via EmailJS" : relayOn() ? "Direct, via le service Google" : "Par la messagerie du téléphone");
+    const warns = [];
+    if (expected() && state.pallets.length < expected()) warns.push("Il manque " + (expected() - state.pallets.length) + " fiche(s) palette(s) : " + countTxt() + " scannées.");
+    if (!curEmpty()) warns.push("La palette en cours n'est pas validée : elle ne sera pas dans le fichier.");
+    if (state.mode === "GG" && state.date !== todayISO()) warns.push("La date de réception n'est pas celle d'aujourd'hui.");
+    $("sendWarn").hidden = !warns.length; $("sendWarn").textContent = warns.join(" ");
+    $("sendOk").textContent = warns.length ? "Oui, envoyer quand même" : "Oui, envoyer";
+    $("sendOk").disabled = false;
+    $("sendOv").hidden = false;
+    $("sendOk").focus();
+  }
+  $("sendCancel").onclick = () => { $("sendOv").hidden = true; setStatus("Envoi annulé.", "warn"); };
+  $("sendOv").addEventListener("click", (e) => { if (e.target === $("sendOv")) $("sendCancel").click(); });
+  $("sendOk").onclick = async () => {
+    $("sendOk").disabled = true; $("sendOk").textContent = "Envoi en cours…";
+    await doExport();
+    $("sendOv").hidden = true;
   };
   async function doExport() {
     if (!state.pallets.length) return;
@@ -1284,8 +1361,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     let wasReady = !!buf;
     if (!buf) { try { buf = await buildXlsx(); } catch (e) { setStatus("Impossible de créer le fichier Excel (" + (e && e.message || e) + "). Essayez « Télécharger l'Excel ».", "bad"); return; } }
 
-    // Service d'envoi configuré : le fichier part directement aux destinataires, sans ouvrir la messagerie
-    if (state.settings.autoMail && state.settings.relay) {
+    // EmailJS configuré : le fichier part directement aux destinataires, sans ouvrir la messagerie
+    if (ejsOn()) {
+      setStatus("Envoi en cours à " + EMAIL_TO + "…", "");
+      if (await sendViaEmailJS(buf, name)) return;
+      wasReady = false; // échec : on passe par la messagerie du téléphone
+    } else if (state.settings.autoMail && state.settings.relay) {
       setStatus("Envoi en cours à " + EMAIL_TO + "…", "");
       if (await sendViaRelay(buf, name)) return;
       wasReady = false; // l'envoi automatique a échoué : on passe par la messagerie du téléphone
@@ -1307,7 +1388,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const why = /^(file|content):$/.test(location.protocol)
       ? "L'application est ouverte depuis un fichier : le téléphone ne permet pas de joindre l'Excel automatiquement. Ouvrez-la depuis son lien internet."
       : "Ce téléphone n'autorise pas une page web à joindre un fichier Excel (c'est le cas de Chrome sur Android).";
-    setStatus(why + " Le fichier " + name + " est téléchargé : joignez-le à l'e-mail. Pour un envoi 100 % automatique, configurez le service d'envoi dans Réglages." + pendingNote, "warn");
+    setStatus(why + " Le fichier " + name + " est téléchargé : joignez-le à l'e-mail. Pour un envoi direct, renseignez EmailJS dans Réglages." + pendingNote, "warn");
   }
 
   let pendingShare = null;
@@ -1330,7 +1411,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     downloadFile(buf, file.name);
     openMailto(file.name);
     setStatus((refused ? "Votre téléphone refuse de joindre automatiquement un fichier Excel depuis l'application. " : "") +
-      "Le fichier " + file.name + " vient d'être téléchargé et l'e-mail est ouvert avec les destinataires : joignez le fichier (trombone → Téléchargements / Fichiers). Pour un envoi sans manipulation, installez le service d'envoi (Réglages)." + note, "warn");
+      "Le fichier " + file.name + " vient d'être téléchargé et l'e-mail est ouvert avec les destinataires : joignez le fichier (trombone → Téléchargements / Fichiers). Pour un envoi direct, renseignez EmailJS dans Réglages." + note, "warn");
   }
 
   function downloadFile(buf, name) {
@@ -1350,17 +1431,85 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       const res = await fetch(state.settings.relay, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ key: RELAY_KEY, filename: name, subject: subject(), count: state.pallets.length, date: state.mode === "GG" ? dateDDMMYYYY(state.date) : "OF " + ofList().join(", "), data: b64(buf) })
+        body: JSON.stringify({ key: RELAY_KEY, filename: name, subject: subject(), text: mailBody(), count: state.pallets.length, date: state.mode === "GG" ? dateDDMMYYYY(state.date) : "OF " + ofList().join(", "), data: b64(buf) })
       });
       const j = await res.json().catch(() => ({}));
-      if (j.ok) { setStatus("E-mail envoyé à " + EMAIL_TO + " avec " + name + ".", "ok"); return true; }
-      setStatus("L'envoi automatique a été refusé (" + (j.error || "réponse " + res.status) + "). Vérifiez le service d'envoi dans Réglages.", "bad");
+      if (j.ok) { setStatus("E-mail envoyé à " + EMAIL_TO + " avec " + name + ".", "ok"); flash("ok", "E-mail envoyé", "À " + EMAIL_TO + " avec " + name + "."); beep(true); return true; }
+      refuse("L'envoi automatique a été refusé (" + (j.error || "réponse " + res.status) + "). L'application ouvre la messagerie à la place.", "E-mail non envoyé");
     } catch (e) {
-      setStatus("L'e-mail n'a pas pu partir (pas de réseau ou service d'envoi injoignable). Réessayez avec « Envoyer l'Excel par e-mail ».", "bad");
+      refuse("Le service d'envoi est injoignable (pas de réseau ?). L'application ouvre la messagerie à la place.", "E-mail non envoyé");
     }
     return false;
   }
 
+
+  // ---- Envoi par EmailJS (API REST, sans bibliothèque) ----
+  function ejsCfg() {
+    return {
+      ejsService: state.settings.ejsService || EMAILJS.serviceId,
+      ejsTemplate: state.settings.ejsTemplate || EMAILJS.templateId,
+      ejsKey: state.settings.ejsKey || EMAILJS.publicKey
+    };
+  }
+  function ejsOn() { const c = ejsCfg(); return !!(c.ejsService && c.ejsTemplate && c.ejsKey); }
+  async function ejsPost(params) {
+    const c = ejsCfg();
+    const body = JSON.stringify({ service_id: c.ejsService, template_id: c.ejsTemplate, user_id: c.ejsKey, template_params: params });
+    if (body.length > EMAILJS_MAX) { const e = new Error("too_big"); e.size = body.length; throw e; }
+    const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+    const txt = await res.text().catch(() => "");
+    if (!res.ok) throw new Error(txt || ("erreur " + res.status));
+    return true;
+  }
+  function ejsParams(buf, name, extra) {
+    return {
+      to_email: EMAIL_LIST.join(","),
+      subject: subject(),
+      message: "Bonjour,\n\n" + mailBody() + (extra || "") + "\n\nEnvoyé depuis l'application de scan des palettes.",
+      filename: name,
+      excel: "data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64," + b64(buf)
+    };
+  }
+  async function sendViaEmailJS(buf, name) {
+    try {
+      try {
+        await ejsPost(ejsParams(buf, name));
+      } catch (e) {
+        if (e.message !== "too_big" || !dmgList().length) throw e;
+        // trop lourd à cause des photos : on renvoie l'Excel sans l'onglet photos
+        const light = await buildXlsx({ noPhotos: true });
+        await ejsPost(ejsParams(light, name, "\n\n(Les photos des palettes abîmées n'ont pas pu être jointes : fichier trop lourd pour EmailJS.)"));
+        setStatus("E-mail envoyé à " + EMAIL_TO + ", sans les photos (trop lourdes pour EmailJS).", "warn");
+        flash("warn", "E-mail envoyé sans photos", "Les photos des palettes abîmées étaient trop lourdes pour EmailJS. L'Excel est parti avec l'onglet de réception.");
+        beep(true);
+        return true;
+      }
+      setStatus("E-mail envoyé à " + EMAIL_TO + " avec " + name + ".", "ok");
+      flash("ok", "E-mail envoyé", "À " + EMAIL_TO + " avec " + name + ".");
+      beep(true);
+      return true;
+    } catch (e) {
+      const why = e.message === "too_big"
+        ? "Le fichier est trop lourd pour EmailJS (" + Math.round(e.size / 1024) + " Ko, maximum " + Math.round(EMAILJS_MAX / 1024) + " Ko)."
+        : /Failed to fetch|NetworkError|Load failed/i.test(e.message) ? "Pas de réseau, ou EmailJS injoignable." : "EmailJS a refusé l'envoi : " + e.message;
+      refuse(why + " L'application ouvre la messagerie à la place.", "E-mail non envoyé");
+      return false;
+    }
+  }
+  $("ejsTestBtn").onclick = async () => {
+    $("ejsTestBtn").disabled = true;
+    try {
+      await ejsPost({ to_email: EMAIL_LIST.join(","), subject: "Test EmailJS - scan palettes", message: "Le compte EmailJS est bien relié à l'application de scan des palettes.", filename: "", excel: "" });
+      flash("ok", "Test envoyé", "Vérifiez la boîte de " + EMAIL_TO + ".");
+      setStatus("E-mail de test envoyé à " + EMAIL_TO + ".", "ok");
+    } catch (e) {
+      refuse("Le test a échoué : " + e.message + ". Vérifiez le Service ID, le Template ID et la Public Key.", "Test échoué");
+    }
+    $("ejsTestBtn").disabled = !ejsOn();
+  };
+  [["ejsService", "ejsService"], ["ejsTemplate", "ejsTemplate"], ["ejsKey", "ejsKey"]].forEach(([id, k]) => {
+    $(id).addEventListener("change", () => { state.settings[k] = $(id).value.trim(); save(); render(); });
+  });
   $("autoMail").onchange = (e) => { state.settings.autoMail = e.target.checked; save(); };
   $("relayInput").onchange = (e) => { state.settings.relay = e.target.value.trim(); save(); render(); };
 
