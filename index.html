@@ -302,7 +302,7 @@ td.del .dmg-row { color: var(--bad); }
     <div class="scan-row">
       <input id="scanInput" type="text" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false"
              placeholder="Scanner ou saisir un code, puis Entrée" aria-label="Code-barres">
-      <button class="btn" id="liveBtn" type="button">
+      <button class="btn" id="liveBtn" type="button" hidden>
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3"/><path d="M7 8v8M10 8v8M13 8v8M16 8v8"/></svg>
         Caméra en direct
       </button>
@@ -356,8 +356,8 @@ td.del .dmg-row { color: var(--bad); }
         Envoyer l'Excel par e-mail
       </button>
       <button id="dlBtn" type="button">Télécharger l'Excel</button>
-      <button id="copyMailBtn" type="button">Copier les adresses e-mail</button>
-      <button id="copyBtn">Copier pour coller dans Excel</button>
+      <button id="copyMailBtn" type="button" hidden>Copier les adresses e-mail</button>
+      <button id="copyBtn" hidden>Copier pour coller dans Excel</button>
       <button class="btn-danger" id="resetBtn">Nouveau camion</button>
     </div>
     <div id="confirmBox" hidden></div>
@@ -1439,7 +1439,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     try {
       await navigator.share({ files: [file], title: subject(), text: "Bonjour,\n\n" + mailBody() + "\n\nDestinataires : " + EMAIL_TO });
       state.settings.noShare = false; markSent();
-      setStatus("E-mail préparé avec " + file.name + ". Destinataires à mettre : " + EMAIL_TO + " (bouton « Copier les adresses »)." + note, "ok");
+      setStatus("E-mail préparé avec " + file.name + ". Destinataires à mettre : " + EMAIL_TO + "." + note, "ok");
     } catch (e) {
       if (e && e.name === "AbortError") { setStatus("Envoi annulé." + note, "warn"); return; }
       if (e && e.name === "NotAllowedError" && !fromTap) { offerShare(file, note); return; }
