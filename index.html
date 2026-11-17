@@ -221,6 +221,11 @@ td.del .dmg-row { color: var(--bad); }
 .ejs { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px 12px; display: grid; gap: 6px; min-width: 0; }
 .ejs legend { font-weight: 600; padding: 0 4px; }
 .ejs-in { width: 100%; font: 400 .9rem var(--font-mono); padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
+.reset-ov .send-card { border: 4px solid var(--bad); }
+.reset-icon { background: var(--bad-bg); color: var(--bad); border-color: var(--bad); }
+.reset-count { margin: 0; text-align: center; font: 700 1.25rem var(--font-body); }
+.reset-warn { padding: 12px; border-radius: 10px; background: var(--bad); color: #fff; font-weight: 700; font-size: 1rem; text-align: center; }
+.btn-danger-solid { background: var(--bad); color: #fff; border-color: var(--bad); }
 .confirm.ok-box { background: var(--ok-bg); color: var(--ok); }
 @media (prefers-reduced-motion: no-preference) { .flash { animation: flash .5s ease-out; } @keyframes flash { from { box-shadow: 0 0 0 4px var(--yellow); } to { box-shadow: 0 0 0 0 transparent; } } }
 </style>
@@ -391,6 +396,20 @@ td.del .dmg-row { color: var(--bad); }
     <div class="actions">
       <button type="button" class="btn-ghost" id="sendCancel">Non, annuler</button>
       <button type="button" class="btn-primary" id="sendOk">Oui, envoyer</button>
+    </div>
+  </div>
+</div>
+
+<div id="resetOv" class="send-ov reset-ov" role="alertdialog" aria-modal="true" aria-labelledby="h-reset" hidden>
+  <div class="send-card">
+    <div class="send-icon reset-icon" aria-hidden="true">✕</div>
+    <h2 id="h-reset">Effacer ce camion&nbsp;?</h2>
+    <p class="reset-count" id="resetCount"></p>
+    <div id="resetWarn" class="reset-warn" hidden></div>
+    <p class="help" id="resetHelp"></p>
+    <div class="actions">
+      <button type="button" class="btn-ghost" id="resetNo">Non, garder</button>
+      <button type="button" class="btn-danger-solid" id="resetYes">Oui, tout effacer</button>
     </div>
   </div>
 </div>
@@ -1385,6 +1404,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // Le téléphone refuse de joindre le fichier automatiquement : téléchargement + e-mail pré-rempli
     downloadFile(buf, name);
     openMailto(name);
+    markSent();
     const why = /^(file|content):$/.test(location.protocol)
       ? "L'application est ouverte depuis un fichier : le téléphone ne permet pas de joindre l'Excel automatiquement. Ouvrez-la depuis son lien internet."
       : "Ce téléphone n'autorise pas une page web à joindre un fichier Excel (c'est le cas de Chrome sur Android).";
@@ -1397,7 +1417,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   async function shareFile(file, note, fromTap) {
     try {
       await navigator.share({ files: [file], title: subject(), text: "Bonjour,\n\n" + mailBody() + "\n\nDestinataires : " + EMAIL_TO });
-      state.settings.noShare = false; save();
+      state.settings.noShare = false; markSent();
       setStatus("E-mail préparé avec " + file.name + ". Destinataires à mettre : " + EMAIL_TO + " (bouton « Copier les adresses »)." + note, "ok");
     } catch (e) {
       if (e && e.name === "AbortError") { setStatus("Envoi annulé." + note, "warn"); return; }
@@ -1408,6 +1428,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     }
   }
   function fallbackMail(file, buf, note, refused) {
+    markSent();
     downloadFile(buf, file.name);
     openMailto(file.name);
     setStatus((refused ? "Votre téléphone refuse de joindre automatiquement un fichier Excel depuis l'application. " : "") +
@@ -1434,7 +1455,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         body: JSON.stringify({ key: RELAY_KEY, filename: name, subject: subject(), text: mailBody(), count: state.pallets.length, date: state.mode === "GG" ? dateDDMMYYYY(state.date) : "OF " + ofList().join(", "), data: b64(buf) })
       });
       const j = await res.json().catch(() => ({}));
-      if (j.ok) { setStatus("E-mail envoyé à " + EMAIL_TO + " avec " + name + ".", "ok"); flash("ok", "E-mail envoyé", "À " + EMAIL_TO + " avec " + name + "."); beep(true); return true; }
+      if (j.ok) { markSent(); setStatus("E-mail envoyé à " + EMAIL_TO + " avec " + name + ".", "ok"); flash("ok", "E-mail envoyé", "À " + EMAIL_TO + " avec " + name + "."); beep(true); return true; }
       refuse("L'envoi automatique a été refusé (" + (j.error || "réponse " + res.status) + "). L'application ouvre la messagerie à la place.", "E-mail non envoyé");
     } catch (e) {
       refuse("Le service d'envoi est injoignable (pas de réseau ?). L'application ouvre la messagerie à la place.", "E-mail non envoyé");
@@ -1480,11 +1501,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         const light = await buildXlsx({ noPhotos: true });
         await ejsPost(ejsParams(light, name, "\n\n(Les photos des palettes abîmées n'ont pas pu être jointes : fichier trop lourd pour EmailJS.)"));
         setStatus("E-mail envoyé à " + EMAIL_TO + ", sans les photos (trop lourdes pour EmailJS).", "warn");
+        markSent();
         flash("warn", "E-mail envoyé sans photos", "Les photos des palettes abîmées étaient trop lourdes pour EmailJS. L'Excel est parti avec l'onglet de réception.");
         beep(true);
         return true;
       }
       setStatus("E-mail envoyé à " + EMAIL_TO + " avec " + name + ".", "ok");
+      markSent();
       flash("ok", "E-mail envoyé", "À " + EMAIL_TO + " avec " + name + ".");
       beep(true);
       return true;
@@ -1519,7 +1542,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (!window.ExcelJS) { setStatus("Le générateur Excel n'a pas pu se charger : vérifiez que le fichier exceljs.min.js est bien en ligne, puis rouvrez l'application.", "bad"); return; }
     try {
       const buf = prepared.sig === sig() ? prepared.buf : await buildXlsx();
-      downloadFile(buf, fileName());
+      downloadFile(buf, fileName()); markSent();
       setStatus("Fichier " + fileName() + " téléchargé (" + state.pallets.length + " palettes).", "ok");
     } catch (e) { setStatus("Impossible de créer le fichier Excel (" + (e && e.message || e) + ").", "bad"); }
   };
@@ -1590,7 +1613,30 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     setStatus("OF corrigé : " + old + " → " + nv + " sur " + n + " palette(s).", "ok");
   };
   $("cancelEditBtn").onclick = () => { editingSetup = false; render(); };
-  $("resetBtn").onclick = () => { confirmMode = "reset"; render(); };
+  // ---- Nouveau camion / nouveau départ : grande alerte de confirmation ----
+  const isSent = () => !!state.sentSig && state.sentSig === sig();
+  function markSent() { state.sentSig = sig(); save(); }
+  $("resetBtn").onclick = () => {
+    const m = M(), n = state.pallets.length;
+    $("h-reset").textContent = (state.mode === "GG" ? "Effacer ce camion" : "Effacer ce départ") + "\u00a0?";
+    $("resetCount").textContent = n ? n + " palette(s) scannée(s) seront effacées" + (dmgList().length ? ", avec les photos des palettes abîmées." : ".") : "Aucune palette scannée.";
+    const warn = n && !isSent();
+    $("resetWarn").hidden = !warn;
+    $("resetWarn").textContent = "⚠ L'Excel de ce " + m.unit + " n'a pas encore été envoyé !";
+    $("resetHelp").textContent = warn ? "Touchez « Non, garder » puis « Envoyer l'Excel par e-mail » avant de recommencer." : (n ? "L'Excel a déjà été envoyé." : "");
+    $("resetYes").textContent = warn ? "Effacer sans envoyer" : "Oui, tout effacer";
+    $("resetOv").hidden = false;
+    $("resetNo").focus();
+    beep(false);
+  };
+  $("resetNo").onclick = () => { $("resetOv").hidden = true; };
+  $("resetOv").addEventListener("click", (e) => { if (e.target === $("resetOv")) $("resetOv").hidden = true; });
+  $("resetYes").onclick = () => {
+    $("resetOv").hidden = true;
+    state.pallets.forEach(dropDmgPhotos); dmgOpen = null; pickedMode = state.mode;
+    state = newState(state.mode, state.settings); confirmMode = null; editingSetup = false; save(); setStatus("", ""); render();
+    flash("ok", state.mode === "GG" ? "Nouveau camion" : "Nouveau départ", state.mode === "GG" ? "Indiquez le nombre de fiches palettes à scanner." : "Indiquez le N° de fiche / OF.");
+  };
   $("dateInput").onchange = (e) => { state.date = e.target.value || todayISO(); save(); render(); };
 
   render();
