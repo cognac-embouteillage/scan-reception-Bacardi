@@ -226,6 +226,7 @@ td.del .dmg-row { color: var(--bad); }
 .reset-count { margin: 0; text-align: center; font: 700 1.25rem var(--font-body); }
 .reset-warn { padding: 12px; border-radius: 10px; background: var(--bad); color: #fff; font-weight: 700; font-size: 1rem; text-align: center; }
 .btn-danger-solid { background: var(--bad); color: #fff; border-color: var(--bad); }
+.site-tag { display: inline-block; font: 700 .9em var(--font-display); padding: 1px 8px; border-radius: 6px; background: var(--ink); color: var(--surface); margin-left: 6px; vertical-align: middle; }
 .confirm.ok-box { background: var(--ok-bg); color: var(--ok); }
 @media (prefers-reduced-motion: no-preference) { .flash { animation: flash .5s ease-out; } @keyframes flash { from { box-shadow: 0 0 0 4px var(--yellow); } to { box-shadow: 0 0 0 0 transparent; } } }
 </style>
@@ -252,7 +253,7 @@ td.del .dmg-row { color: var(--bad); }
     <h2 id="h-setup">Nouveau scan</h2>
     <div class="modes" id="modeChoice" role="radiogroup" aria-label="Type de scan">
       <button type="button" class="mode" data-mode="GG" role="radio">
-        <b>Réception GG</b><small>3 codes-barres · nombre de fiches palettes fixé</small>
+        <b>Réception GG/CDC</b><small>Grey Goose ou Château de Cognac · 3 codes-barres · nombre de fiches palettes fixé</small>
       </button>
       <button type="button" class="mode" data-mode="HEN" role="radio">
         <b>Départ HENNESSY</b><small>2 codes-barres · N° de fiche / OF</small>
@@ -504,7 +505,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   // ---- Les deux types de scan ----
   const MODES = {
     GG: {
-      title: ["Réception", "Palettes GG"],
+      title: ["Réception", "Palettes GG/CDC"],
       sub: "Photographiez chaque fiche palette : les 3 codes sont lus et la palette s'enregistre seule.",
       keys: ["c1", "c2", "c3"],
       labels: { c1: "Code barre 1 code produit", c2: "Code barre 2 GTIN /Qte Pal / N° lot", c3: "Code barre 3 SSCC" },
@@ -514,9 +515,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       widths: [16, 30, 42, 30, 20],
       row: (p) => [dateDDMMYYYY(state.date), p.c1, p.c2, p.c3, p.c4],
       sheet: "Réception",
-      file: () => "reception_palettes_GG_" + dateDDMMYYYY(state.date) + ".xlsx",
-      subject: () => "Réception Palettes GG - " + dateDDMMYYYY(state.date) + " - " + state.pallets.length + " palette(s)",
-      body: () => "Ci-joint la réception du " + dateDDMMYYYY(state.date) + " : " + state.pallets.length + " palette(s).",
+      file: () => "reception_palettes_" + siteCode().replace(/[+\/]/g, "-") + "_" + dateDDMMYYYY(state.date) + ".xlsx",
+      subject: () => "Réception Palettes " + siteCode() + (SITES[siteCode()] ? " (" + SITES[siteCode()] + ")" : "") + " - " + dateDDMMYYYY(state.date) + " - " + state.pallets.length + " palette(s)",
+      body: () => "Ci-joint la réception " + siteName() + " du " + dateDDMMYYYY(state.date) + " : " + state.pallets.length + " palette(s)." + siteDetail(),
       rules: "Réception GG : les codes sont rangés selon leur préfixe GS1 (00 = SSCC, 01/02 = GTIN / quantité / lot, 11 = code produit). Les autres codes-barres sont ignorés. Une fiche est reconnue par son SSCC : elle ne peut pas être scannée deux fois."
     },
     HEN: {
@@ -544,6 +545,27 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   if (state.settings.autoMail === undefined) state.settings.autoMail = true;
   if (!state.settings.relay) state.settings.relay = RELAY_URL_DEFAULT;
   if (state.of === undefined) state.of = "";
+  // Réception GG/CDC : type de fiches (Grey Goose ou Château de Cognac). Camion déjà commencé avant cette version : GG.
+  // Le type est reconnu automatiquement sur chaque fiche, d'après le N° de lot (code barre 2) :
+  // lot « 26289GE200 » (lettre G après les 5 chiffres) = Grey Goose, « 26288CO100 » (lettre C) = Château de Cognac.
+  const SITES = { GG: "Grey Goose", CDC: "Château de Cognac" };
+  function siteOf(p) {
+    const m = String(p.c2 || "").toUpperCase().match(/\d{5}([A-Z])[A-Z0-9]{0,8}$/);
+    if (!m) return "";
+    return m[1] === "G" ? "GG" : m[1] === "C" ? "CDC" : "";
+  }
+  function siteCounts() { const c = { GG: 0, CDC: 0, "?": 0 }; state.pallets.forEach((p) => { c[siteOf(p) || "?"]++; }); return c; }
+  function siteCode() {
+    const c = siteCounts(), k = ["GG", "CDC"].filter((x) => c[x]);
+    return k.length === 1 ? k[0] : k.length === 2 ? "GG+CDC" : "GG/CDC";
+  }
+  function siteName() { const c = siteCode(); return SITES[c] || (c === "GG+CDC" ? "Grey Goose et Château de Cognac" : "GG/CDC"); }
+  function siteDetail() {
+    const c = siteCounts();
+    const parts = ["GG", "CDC"].filter((x) => c[x]).map((x) => SITES[x] + " (" + x + ") : " + c[x] + " palette(s)");
+    if (c["?"]) parts.push("type non reconnu : " + c["?"] + " palette(s)");
+    return parts.length > 1 ? "\n" + parts.map((x) => "- " + x).join("\n") : "";
+  }
   // Date de réception : toujours la date du jour tant qu'aucune palette n'est scannée
   function refreshDate() {
     if (!state.pallets.length && curEmpty0() && state.date !== todayISO()) { state.date = todayISO(); save(); return true; }
@@ -682,6 +704,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const t = $("appTitle"); t.textContent = m.title[0] + " ";
     const sp = document.createElement("span"); sp.textContent = m.title[1]; t.appendChild(sp);
     $("appSub").textContent = m.sub;
+    if (state.mode === "GG" && state.pallets.length && siteCode() !== "GG/CDC") { const tg = document.createElement("span"); tg.className = "site-tag"; tg.textContent = siteCode(); $("appTitle").appendChild(tg); }
     $("dateBox").hidden = state.mode !== "GG";
     $("ofBox").hidden = state.mode !== "HEN" || !state.of;
     $("ofVal").textContent = state.of;
@@ -715,8 +738,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     $("fixOfBtn").textContent = "Corriger une erreur : renommer l'OF " + state.of + " (" + curOfCount + " palette(s))";
     $("fixOfHelp").textContent = curOfCount ? "OF mal saisi ? Tapez le bon numéro puis « Corriger une erreur » : il remplace " + state.of + " sur les palettes déjà scannées avec cet OF." : "";
     ["startBtnGG", "startBtnHEN"].forEach((id) => { $(id).textContent = editingSetup ? "Enregistrer" : "Commencer le scan"; });
-    if (setupOpen && document.activeElement !== $("expectedInput")) $("expectedInput").value = state.expected || "";
-    if (setupOpen && document.activeElement !== $("ofInput")) $("ofInput").value = state.of || "";
     $("editSetupBtn").textContent = state.mode === "GG" ? "Modifier le nombre" : "Changer d'OF";
     if (editingSetup && setupMode === "HEN" && state.pallets.length) $("startBtnHEN").textContent = "Passer à cet OF";
     const oc = $("ofChips"); oc.textContent = "";
@@ -822,7 +843,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       cb.hidden = false; cb.className = "confirm"; cb.textContent = "";
       const s = document.createElement("span"); s.textContent = "Effacer les " + done + " palette(s) de ce " + m.unit + " ? Pensez à envoyer l'Excel avant.";
       const y = document.createElement("button"); y.className = "btn-sm btn-danger"; y.textContent = "Oui, effacer";
-      y.onclick = () => { state.pallets.forEach(dropDmgPhotos); dmgOpen = null; pickedMode = state.mode; state = newState(state.mode, state.settings); confirmMode = null; editingSetup = false; save(); setStatus("", ""); render(); };
+      y.onclick = () => { state.pallets.forEach(dropDmgPhotos); dmgOpen = null; pickedMode = state.mode; state = newState(state.mode, state.settings); $("expectedInput").value = ""; $("ofInput").value = ""; confirmMode = null; editingSetup = false; save(); setStatus("", ""); render(); };
       const n = document.createElement("button"); n.className = "btn-sm"; n.textContent = "Annuler";
       n.onclick = () => { confirmMode = null; render(); };
       cb.append(s, y, n);
@@ -1600,7 +1621,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   $("expectedInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); startScan(); } });
   $("ofInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); startScan(); } });
   $("editSetupBtn").onclick = () => {
-    editingSetup = true; pickedMode = state.mode; render();
+    editingSetup = true; pickedMode = state.mode; $("expectedInput").value = state.expected || ""; $("ofInput").value = state.of || ""; render();
     const el = state.mode === "GG" ? $("expectedInput") : $("ofInput"); el.focus(); el.select();
   };
   $("fixOfBtn").onclick = () => {
@@ -1634,11 +1655,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   $("resetYes").onclick = () => {
     $("resetOv").hidden = true;
     state.pallets.forEach(dropDmgPhotos); dmgOpen = null; pickedMode = state.mode;
-    state = newState(state.mode, state.settings); confirmMode = null; editingSetup = false; save(); setStatus("", ""); render();
+    state = newState(state.mode, state.settings); $("expectedInput").value = ""; $("ofInput").value = ""; confirmMode = null; editingSetup = false; save(); setStatus("", ""); render();
     flash("ok", state.mode === "GG" ? "Nouveau camion" : "Nouveau départ", state.mode === "GG" ? "Indiquez le nombre de fiches palettes à scanner." : "Indiquez le N° de fiche / OF.");
   };
   $("dateInput").onchange = (e) => { state.date = e.target.value || todayISO(); save(); render(); };
 
+  $("expectedInput").value = state.expected || ""; $("ofInput").value = state.of || "";
   render();
   focusScan();
   if ("serviceWorker" in navigator && location.protocol === "https:") {
