@@ -227,6 +227,11 @@ td.del .dmg-row { color: var(--bad); }
 .reset-warn { padding: 12px; border-radius: 10px; background: var(--bad); color: #fff; font-weight: 700; font-size: 1rem; text-align: center; }
 .btn-danger-solid { background: var(--bad); color: #fff; border-color: var(--bad); }
 .site-tag { display: inline-block; font: 700 .9em var(--font-display); padding: 1px 8px; border-radius: 6px; background: var(--ink); color: var(--surface); margin-left: 6px; vertical-align: middle; }
+.manual-btn { color: var(--accent); border-color: var(--accent); background: transparent; }
+.manual { display: grid; gap: 8px; padding: 12px; border: 2px solid var(--accent); border-radius: 8px; background: var(--bg); }
+.manual input { width: 100%; min-width: 0; font: 600 1.15rem var(--font-mono); padding: 10px 12px; border: 2px solid var(--ink); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.manual .ex { font: 400 .85rem var(--font-mono); color: var(--muted); overflow-wrap: anywhere; margin: 0; }
+.manual .actions > * { flex: 1 1 120px; }
 .confirm.ok-box { background: var(--ok-bg); color: var(--ok); }
 @media (prefers-reduced-motion: no-preference) { .flash { animation: flash .5s ease-out; } @keyframes flash { from { box-shadow: 0 0 0 4px var(--yellow); } to { box-shadow: 0 0 0 0 transparent; } } }
 </style>
@@ -805,8 +810,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         const x = document.createElement("button"); x.className = "slot-x"; x.type = "button"; x.setAttribute("aria-label", "Effacer " + m.labels[k]); x.textContent = "✕";
         x.onclick = () => { state.cur[k] = ""; save(); render(); focusScan(); };
         div.appendChild(x);
+      } else if (manualSlot !== k) {
+        const mb = document.createElement("button"); mb.type = "button"; mb.className = "btn-sm manual-btn"; mb.textContent = "Saisir";
+        mb.setAttribute("aria-label", "Saisir à la main : " + m.labels[k]);
+        mb.onclick = () => { manualSlot = k; render(); const inp = $("manualInput"); if (inp) inp.focus(); };
+        div.appendChild(mb);
       } else div.appendChild(document.createElement("span"));
       slots.appendChild(div);
+      if (!v && manualSlot === k) slots.appendChild(manualForm(k));
     });
     $("validateBtn").disabled = curEmpty();
 
@@ -885,6 +896,56 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
 
   function focusScan() { if (window.matchMedia("(pointer: fine)").matches) scanInput.focus(); }
+
+
+  // ---- Saisie manuelle d'un code-barres illisible ----
+  let manualSlot = null;
+  const MANUAL_EX = {
+    GG: { c1: "(11)261015(240)4520823038", c2: "(02)10080480989368(37)70(10)26288CO100", c3: "(00)330119349600771572" },
+    HEN: { c1: "chiffres sous le 1er code-barres", c2: "chiffres sous le 2e code-barres" }
+  };
+  function manualForm(k) {
+    const m = M();
+    const box = document.createElement("div"); box.className = "manual";
+    const lb = document.createElement("label"); lb.className = "lbl"; lb.htmlFor = "manualInput"; lb.textContent = "Saisie à la main : " + m.labels[k];
+    const ex = document.createElement("p"); ex.className = "ex";
+    ex.textContent = "Tapez les caractères écrits sous le code-barres, parenthèses et espaces facultatifs. Exemple : " + (MANUAL_EX[state.mode] || MANUAL_EX.GG)[k];
+    const inp = document.createElement("input"); inp.id = "manualInput"; inp.type = "text"; inp.autocomplete = "off";
+    inp.setAttribute("autocapitalize", "characters"); inp.setAttribute("autocorrect", "off"); inp.spellcheck = false;
+    if (state.mode === "GG" && k !== "c2") inp.inputMode = "numeric";
+    const act = document.createElement("div"); act.className = "actions";
+    const ok = document.createElement("button"); ok.type = "button"; ok.className = "btn-primary"; ok.textContent = "Enregistrer ce code";
+    const no = document.createElement("button"); no.type = "button"; no.className = "btn-ghost"; no.textContent = "Annuler";
+    ok.onclick = () => saveManual(k, inp.value);
+    no.onclick = () => { manualSlot = null; render(); };
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); saveManual(k, inp.value); } });
+    act.append(no, ok);
+    box.append(lb, ex, inp, act);
+    return box;
+  }
+  function saveManual(k, raw) {
+    let code = clean(raw).toUpperCase();
+    if (!code) { refuse("Tapez le code avant d'enregistrer."); return; }
+    if (state.mode === "GG") {
+      // préfixe GS1 oublié : on le remet
+      if (k === "c3" && /^\d{18}$/.test(code)) code = "00" + code;
+      if (k === "c1" && /^\d{6}240/.test(code)) code = "11" + code;
+      if (k === "c2" && /^\d{14}37/.test(code)) code = "02" + code;
+      if (classifyGG(code) !== k) {
+        const hint = { c1: "commencer par (11) suivi de 6 chiffres", c2: "commencer par (02) suivi de 14 chiffres", c3: "faire 18 chiffres après (00)" }[k];
+        refuse("Ce n'est pas un " + M().labels[k] + " valide : il doit " + hint + ". Vérifiez la saisie.", "Code incorrect");
+        return;
+      }
+      if (k === "c3" && dupIndex(code) >= 0) { refuse(dupMsg(dupIndex(code)), "Déjà scannée"); return; }
+    } else if (code.length < 4) { refuse("Code trop court : vérifiez la saisie.", "Code incorrect"); return; }
+    if (!ready()) { refuse(notReadyMsg()); return; }
+    if (isFull()) { refuse(fullMsg(), "Camion complet"); return; }
+    manualSlot = null;
+    state.cur[k] = code;
+    if (curComplete()) { commit(); return; }
+    save(); render(k);
+    setStatus(M().short[k] + " saisi à la main : " + code, "ok");
+  }
 
   // ---- Saisie douchette / clavier ----
   scanInput.addEventListener("keydown", (e) => {
@@ -971,7 +1032,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         const m = M();
         const lus = keys().filter((k) => state.cur[k]), manq = keys().filter((k) => !state.cur[k]);
         const detail = lus.length + " code(s) lu(s) sur " + n + ". Manque : " + manq.map((k) => m.short[k]).join(", ") +
-          ". Reprenez la photo (de plus près, bien nette, sans reflet) ou scannez le code manquant à la douchette.";
+          ". Reprenez la photo, ou touchez « Saisir » à côté du code manquant pour taper les chiffres écrits sous le code-barres.";
         refuse(detail, "Palette non lue");
       }
     } catch (err) {
@@ -1615,7 +1676,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   };
 
   $("validateBtn").onclick = () => { commit(); focusScan(); };
-  $("clearCurBtn").onclick = () => { state.cur = emptyPallet(); save(); render(); setStatus("Palette en cours vidée.", ""); focusScan(); };
+  $("clearCurBtn").onclick = () => { manualSlot = null; state.cur = emptyPallet(); save(); render(); setStatus("Palette en cours vidée.", ""); focusScan(); };
 
   // ---- Écran de départ ----
   document.querySelectorAll(".mode").forEach((b) => b.onclick = () => {
