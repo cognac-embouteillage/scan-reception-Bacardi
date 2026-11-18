@@ -370,11 +370,11 @@ td.del .dmg-row { color: var(--bad); }
         <legend>Envoi par EmailJS</legend>
         <p class="help" id="ejsHelp"></p>
         <label class="lbl" for="ejsService">Service ID</label>
-        <input id="ejsService" class="ejs-in" type="text" autocomplete="off" spellcheck="false" placeholder="service_xxxxxxx">
+        <input id="ejsService" class="ejs-in" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="service_xxxxxxx">
         <label class="lbl" for="ejsTemplate">Template ID</label>
-        <input id="ejsTemplate" class="ejs-in" type="text" autocomplete="off" spellcheck="false" placeholder="template_xxxxxxx">
+        <input id="ejsTemplate" class="ejs-in" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="template_xxxxxxx">
         <label class="lbl" for="ejsKey">Public Key</label>
-        <input id="ejsKey" class="ejs-in" type="text" autocomplete="off" spellcheck="false" placeholder="ex. AbCdEf123456">
+        <input id="ejsKey" class="ejs-in" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="ex. AbCdEf123456">
         <div class="actions"><button type="button" class="btn-sm" id="ejsTestBtn">Envoyer un e-mail de test</button></div>
       </fieldset>
       <label hidden><input type="checkbox" id="autoMail" checked> <span>Si le service d'envoi est configuré, envoyer aussi directement à <b id="mailTo"></b></span></label>
@@ -384,6 +384,7 @@ td.del .dmg-row { color: var(--bad); }
         <p class="help" id="relayHelp"></p>
       </div>
       <p class="help" id="rulesHelp"></p>
+      <p class="help" id="diagHelp"></p>
     </div>
   </details>
 </div>
@@ -411,6 +412,19 @@ td.del .dmg-row { color: var(--bad); }
     <div class="actions">
       <button type="button" class="btn-ghost" id="resetNo">Non, garder</button>
       <button type="button" class="btn-danger-solid" id="resetYes">Oui, tout effacer</button>
+    </div>
+  </div>
+</div>
+
+<div id="errOv" class="send-ov reset-ov" role="alertdialog" aria-modal="true" aria-labelledby="h-err" hidden>
+  <div class="send-card">
+    <div class="send-icon reset-icon" aria-hidden="true">✕</div>
+    <h2 id="h-err">E-mail non envoyé</h2>
+    <p class="reset-warn" id="errWhy"></p>
+    <p class="help" id="errHelp"></p>
+    <div class="actions">
+      <button type="button" class="btn-ghost" id="errMail">Ouvrir la messagerie</button>
+      <button type="button" class="btn-primary" id="errRetry">Réessayer</button>
     </div>
   </div>
 </div>
@@ -764,6 +778,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       ? "EmailJS est actif : « Envoyer l'Excel par e-mail » affiche un récapitulatif, puis envoie le fichier à " + EMAIL_TO + " sans ouvrir de messagerie."
       : "Remplissez les 3 identifiants de votre compte EmailJS pour envoyer l'Excel directement depuis l'application. Sans eux, le bouton ouvre la messagerie du téléphone.";
     $("ejsTestBtn").disabled = !ejsOn();
+    ["ejsService", "ejsTemplate", "ejsKey"].forEach((id) => { $(id).readOnly = ejsBuiltIn(); });
+    if (ejsBuiltIn()) $("ejsHelp").textContent = "EmailJS est configuré dans l'application (identiques sur tous les téléphones). « Envoyer l'Excel par e-mail » envoie le fichier à " + EMAIL_TO + " après confirmation.";
+    $("diagHelp").textContent = "Version de l'application : 2026-11-18" + " · Envoi : " + (ejsOn() ? "EmailJS (" + ejsCfg().ejsService + ")" : "messagerie du téléphone") +
+      (state.settings.lastErr ? " · Dernière erreur d'envoi : " + state.settings.lastErr : "");
     $("mailTo").textContent = EMAIL_TO;
     if (document.activeElement !== $("relayInput")) $("relayInput").value = state.settings.relay || "";
     $("relayHelp").textContent = state.settings.relay
@@ -1392,6 +1410,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     await doExport();
     $("sendOv").hidden = true;
   };
+  let skipDirect = false; // « Ouvrir la messagerie » après un échec EmailJS
   async function doExport() {
     if (!state.pallets.length) return;
     if (!window.ExcelJS) { setStatus("Le générateur Excel n'a pas pu se charger. Rouvrez l'application ; si le problème continue, redéposez le dernier index.html.", "bad"); return; }
@@ -1402,10 +1421,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (!buf) { try { buf = await buildXlsx(); } catch (e) { setStatus("Impossible de créer le fichier Excel (" + (e && e.message || e) + "). Essayez « Télécharger l'Excel ».", "bad"); return; } }
 
     // EmailJS configuré : le fichier part directement aux destinataires, sans ouvrir la messagerie
-    if (ejsOn()) {
+    if (ejsOn() && !skipDirect) {
       setStatus("Envoi en cours à " + EMAIL_TO + "…", "");
-      if (await sendViaEmailJS(buf, name)) return;
-      wasReady = false; // échec : on passe par la messagerie du téléphone
+      await sendViaEmailJS(buf, name); // en cas d'échec, une fenêtre explique pourquoi et propose de réessayer
+      return;
     } else if (state.settings.autoMail && state.settings.relay) {
       setStatus("Envoi en cours à " + EMAIL_TO + "…", "");
       if (await sendViaRelay(buf, name)) return;
@@ -1486,11 +1505,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
 
   // ---- Envoi par EmailJS (API REST, sans bibliothèque) ----
+  // Identifiants inscrits dans l'application = prioritaires : une saisie erronée sur un téléphone
+  // (majuscule ajoutée par le clavier, espace…) ne peut plus bloquer l'envoi.
+  const ejsBuiltIn = () => !!(EMAILJS.serviceId && EMAILJS.templateId && EMAILJS.publicKey);
   function ejsCfg() {
+    if (ejsBuiltIn()) return { ejsService: EMAILJS.serviceId, ejsTemplate: EMAILJS.templateId, ejsKey: EMAILJS.publicKey };
+    const t = (v) => String(v || "").trim();
     return {
-      ejsService: state.settings.ejsService || EMAILJS.serviceId,
-      ejsTemplate: state.settings.ejsTemplate || EMAILJS.templateId,
-      ejsKey: state.settings.ejsKey || EMAILJS.publicKey
+      ejsService: t(state.settings.ejsService).replace(/^service_/i, "service_"),
+      ejsTemplate: t(state.settings.ejsTemplate).replace(/^template_/i, "template_"),
+      ejsKey: t(state.settings.ejsKey)
     };
   }
   function ejsOn() { const c = ejsCfg(); return !!(c.ejsService && c.ejsTemplate && c.ejsKey); }
@@ -1528,18 +1552,27 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         return true;
       }
       setStatus("E-mail envoyé à " + EMAIL_TO + " avec " + name + ".", "ok");
-      markSent();
+      markSent(); state.settings.lastErr = ""; save();
       flash("ok", "E-mail envoyé", "À " + EMAIL_TO + " avec " + name + ".");
       beep(true);
       return true;
     } catch (e) {
       const why = e.message === "too_big"
         ? "Le fichier est trop lourd pour EmailJS (" + Math.round(e.size / 1024) + " Ko, maximum " + Math.round(EMAILJS_MAX / 1024) + " Ko)."
-        : /Failed to fetch|NetworkError|Load failed/i.test(e.message) ? "Pas de réseau, ou EmailJS injoignable." : "EmailJS a refusé l'envoi : " + e.message;
-      refuse(why + " L'application ouvre la messagerie à la place.", "E-mail non envoyé");
+        : /Failed to fetch|NetworkError|Load failed|network/i.test(e.message) ? "Pas de réseau, ou EmailJS injoignable depuis ce téléphone."
+        : /limit|quota/i.test(e.message) ? "Limite d'envoi EmailJS atteinte (" + e.message + ")."
+        : "EmailJS a refusé l'envoi : " + e.message;
+      state.settings.lastErr = new Date().toLocaleString("fr-FR") + " : " + why; save();
+      render();
+      setStatus("E-mail non envoyé : " + why, "bad"); beep(false);
+      $("errWhy").textContent = why;
+      $("errHelp").textContent = "Vérifiez que le téléphone a du réseau, puis touchez « Réessayer ». Sinon, « Ouvrir la messagerie » télécharge l'Excel et ouvre votre messagerie.";
+      $("errOv").hidden = false;
       return false;
     }
   }
+  $("errRetry").onclick = () => { $("errOv").hidden = true; doExport(); };
+  $("errMail").onclick = () => { $("errOv").hidden = true; skipDirect = true; prepared.sig = ""; doExport().finally(() => { skipDirect = false; }); };
   $("ejsTestBtn").onclick = async () => {
     $("ejsTestBtn").disabled = true;
     try {
