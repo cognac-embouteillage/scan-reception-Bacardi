@@ -322,12 +322,12 @@ body.pc-on { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 140px); }
       <p class="help">Indiquez le nombre de fiches palettes du bon de livraison. L'application bloquera les palettes en trop et signalera celles qui manquent.</p>
     </div>
     <div id="setupPC" hidden>
-      <label class="lbl" for="pcRefIn">Référence du chargement</label>
+      <label class="lbl" for="pcRefIn">Client ou type de produit</label>
       <div class="scan-row">
-        <input id="pcRefIn" class="big-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ex. MSCU1234567">
+        <input id="pcRefIn" class="big-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ex. DUPONT ou COGNAC VSOP">
         <button class="btn-primary" id="pcStartBtn" type="button">Commencer les photos</button>
       </div>
-      <p class="help">N° de conteneur, immatriculation, n° de commande… Il apparaîtra sur chaque photo et dans l’objet du mail.</p>
+      <p class="help">En général le nom du client ou le type de produit. Il apparaîtra sur chaque photo et dans l’objet du mail.</p>
     </div>
     <div id="setupHEN" hidden>
       <label class="lbl" for="ofInput">N° de fiche / OF</label>
@@ -2232,12 +2232,11 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   "use strict";
   const PC_MAIL_TO = "aurelien@pdf16.fr";
   const STEPS = [
-    { k: "vide",   t: "Vide avant chargement", req: true },
-    { k: "milieu", t: "Milieu de chargement",  req: true },
-    { k: "fin",    t: "Fin de chargement",     req: true },
-    { k: "plomb",  t: "Plomb posé",            req: true },
-    { k: "portes", t: "Portes fermées",        req: true },
-    { k: "docs",   t: "Documents (CMR, BL…)",  req: false },
+    { k: "vide",   t: "Vide avant chargement", req: true, short: "vide" },
+    { k: "milieu", t: "Milieu de chargement",  req: true, short: "milieu" },
+    { k: "fin",    t: "Fin de chargement",     req: true, short: "fin" },
+    { k: "plomb",  t: "Plomb posé",            req: false },
+    { k: "portes", t: "Portes fermées avec immatriculation visible", req: true, short: "portes fermées" },
     { k: "autres", t: "Réserves ou autres",    req: false, note: true }
   ];
   const ICON = {
@@ -2374,7 +2373,10 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     return file;
   }
 
+  // Étapes obligatoires sans photo : l’envoi est bloqué tant qu’il en reste
+  function missingReq() { return STEPS.filter((s) => s.req && !(S.photos[s.k] || []).some((p) => !p.busy)); }
   async function send() {
+    if (missingReq().length) { toast("Photos obligatoires manquantes."); return; }
     let file;
     try { file = await buildPdf(); } catch (e) { toast("Impossible de préparer le PDF."); return; }
     if (!file) return;
@@ -2443,10 +2445,10 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     const box = $("pcBody"), bar = $("pcBar");
     if (!S.ref) { bar.hidden = true; box.replaceChildren(); return; }
     const n = count();
-    const missing = STEPS.filter((s) => s.req && !(S.photos[s.k] || []).length).length;
+    const missingSteps = missingReq(), missing = missingSteps.length;
     box.replaceChildren(...[
       h("div", { class: "pc-ref" }, h("b", { text: S.ref }),
-        h("button", { type: "button", class: "btn-sm", text: "Modifier", onclick: () => { const v = prompt("Référence du chargement", S.ref); if (v && v.trim()) { S.ref = v.trim().toUpperCase(); changed(); saveSession(true); } } })),
+        h("button", { type: "button", class: "btn-sm", text: "Modifier", onclick: () => { const v = prompt("Client ou type de produit", S.ref); if (v && v.trim()) { S.ref = v.trim().toUpperCase(); changed(); saveSession(true); } } })),
       h("ol", { class: "pc-steps", style: "margin-top:14px" }, ...STEPS.map((s, i) => {
         if (s.note) {
           const num = h("span", { class: "pc-num", "aria-hidden": "true", html: S.note.trim() ? ICON.check : String(i + 1) });
@@ -2479,11 +2481,11 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     ].filter(Boolean));
     bar.hidden = false;
     bar.replaceChildren(h("div", { class: "pc-bar-in" },
-      h("button", { type: "button", class: "btn-primary", disabled: !n || S.busy > 0, onclick: send,
+      h("button", { type: "button", class: "btn-primary", disabled: !n || S.busy > 0 || missing > 0, onclick: send,
         html: ICON.mail + "<span>" + (S.busy ? "Préparation…" : "Envoyer par mail (" + n + " photo" + (n > 1 ? "s" : "") + ")") + "</span>" }),
-      n ? h("div", { class: "pc-meta" },
-        h("span", { text: missing ? missing + " étape" + (missing > 1 ? "s" : "") + " obligatoire" + (missing > 1 ? "s" : "") + " sans photo" : "Toutes les étapes obligatoires sont faites" }),
-        h("button", { type: "button", class: "pc-link", text: "Recommencer", onclick: () => { exit(true); } })) : null));
+      h("div", { class: "pc-meta" },
+        h("span", { text: missing ? "Photo" + (missing > 1 ? "s" : "") + " manquante" + (missing > 1 ? "s" : "") + " : " + missingSteps.map((s) => s.short).join(", ") : "Toutes les photos obligatoires sont prises" }),
+        n ? h("button", { type: "button", class: "pc-link", text: "Recommencer", onclick: () => { exit(true); } }) : null)));
   }
 
   // ---- Onglet dans « Nouveau scan » ----
