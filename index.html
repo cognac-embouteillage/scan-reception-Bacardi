@@ -2263,6 +2263,54 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   const safeName = () => S.ref.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-|-$/g, "") || "chargement";
   const subject = () => "Photos de chargement " + S.ref + " - " + new Date().toLocaleDateString("fr-FR");
   const body = () => "Bonjour,\n\nVeuillez trouver ci-joint les photos du chargement " + S.ref + " (" + count() + " photos).\n\nRéserves ou autres : " + (S.note.trim() || "aucune") + "\n";
+  // ---- Sauvegarde sur l’appareil (IndexedDB) : les photos survivent à un rechargement ou une fermeture ----
+  let dbP = null;
+  function db() {
+    if (!dbP) dbP = new Promise((res, rej) => {
+      const r = indexedDB.open("photos-chargement", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("kv");
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    });
+    return dbP;
+  }
+  async function kv(mode, fn) {
+    const d = await db();
+    return new Promise((res, rej) => {
+      const tx = d.transaction("kv", mode); const st = tx.objectStore("kv");
+      const out = fn(st); tx.oncomplete = () => res(out && out.result); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
+    });
+  }
+  const kvGet = (k) => kv("readonly", (s) => s.get(k));
+  const kvSet = (k, v) => kv("readwrite", (s) => { s.put(v, k); });
+  const kvDel = (k) => kv("readwrite", (s) => { s.delete(k); });
+  const kvClear = () => kv("readwrite", (s) => { s.clear(); });
+  let saveWarned = false;
+  function saveErr() { if (!saveWarned) { saveWarned = true; toast("Attention : sauvegarde sur l’appareil impossible (mémoire pleine ?). Envoyez les photos sans fermer l’application."); } }
+  function sessionData() {
+    const photos = {};
+    Object.keys(S.photos).forEach((k) => { photos[k] = S.photos[k].filter((p) => !p.busy && p.id).map((p) => ({ id: p.id, at: p.at, w: p.w, h: p.h })); });
+    return { ref: S.ref, note: S.note, photos, sent: !!S.sent, saved: Date.now() };
+  }
+  let saveT;
+  function saveSession(now) {
+    clearTimeout(saveT);
+    const go = () => { if (S.ref) kvSet("session", sessionData()).catch(saveErr); };
+    if (now) go(); else saveT = setTimeout(go, 400);
+  }
+  async function clearSession() { clearTimeout(saveT); try { await kvClear(); } catch (e) {} }
+  async function restore() {
+    let ses; try { ses = await kvGet("session"); } catch (e) { return false; }
+    if (!ses || !ses.ref) return false;
+    const photos = {};
+    for (const k of Object.keys(ses.photos || {})) {
+      photos[k] = [];
+      for (const p of ses.photos[k]) { try { const url = await kvGet("p:" + p.id); if (url) photos[k].push({ ...p, url, busy: false }); } catch (e) {} }
+    }
+    S.ref = ses.ref; S.note = ses.note || ""; S.photos = photos; S.sent = !!ses.sent; S.version++;
+    return true;
+  }
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+
   let toastT;
   function toast(msg) {
     let t = $("pcToast");
@@ -2289,9 +2337,12 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     const st = STEPS.find((s) => s.k === step), at = Date.now();
     const tmp = { busy: true, url: URL.createObjectURL(file) };
     (S.photos[step] = S.photos[step] || []).push(tmp); S.busy++; render();
-    try { Object.assign(tmp, await stamp(file, S.ref + "  ·  " + st.t + "  ·  " + fmt(at)), { at, busy: false }); }
+    try {
+      Object.assign(tmp, await stamp(file, S.ref + "  ·  " + st.t + "  ·  " + fmt(at)), { at, busy: false, id: at.toString(36) + Math.random().toString(36).slice(2, 7) });
+      try { await kvSet("p:" + tmp.id, tmp.url); } catch (e) { saveErr(); }
+    }
     catch (e) { S.photos[step] = S.photos[step].filter((p) => p !== tmp); toast("Impossible de lire cette photo."); }
-    S.busy--; changed();
+    S.busy--; changed(); saveSession(true);
   }
   function changed() { S.sent = false; S.version++; S.help = false; render(); clearTimeout(changed.t); changed.t = setTimeout(() => buildPdf().catch(() => {}), 500); }
 
@@ -2327,7 +2378,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     try {
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: subject(), text: body() + "\nDestinataire : " + PC_MAIL_TO });
-        S.sent = true; toast("E-mail préparé. Destinataire : " + PC_MAIL_TO); return;
+        S.sent = true; saveSession(true); toast("E-mail préparé. Destinataire : " + PC_MAIL_TO); return;
       }
     } catch (e) { if (e && e.name === "AbortError") return; }
     // Plan B : enregistrer le PDF puis ouvrir un mail préadressé
@@ -2341,7 +2392,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   // Sortir du chargement en cours et revenir au choix « Nouveau scan », onglet Photos de chargement sélectionné
   function exit(ask) {
     if (ask && count() && !S.help && !S.sent && !confirm("Les photos de ce chargement n’ont pas été envoyées. Les effacer ?")) return;
-    reset(); document.body.classList.remove("pc-on");
+    reset(); clearSession(); document.body.classList.remove("pc-on");
     $("pcTitle").hidden = true; $("pcHead").hidden = true; $("pcSection").hidden = true;
     $("pcRefIn").value = ""; window.scrollTo(0, 0);
   }
@@ -2357,13 +2408,14 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     const missing = STEPS.filter((s) => s.req && !(S.photos[s.k] || []).length).length;
     box.replaceChildren(
       h("div", { class: "pc-ref" }, h("b", { text: S.ref }),
-        h("button", { type: "button", class: "btn-sm", text: "Modifier", onclick: () => { const v = prompt("Référence du chargement", S.ref); if (v && v.trim()) { S.ref = v.trim().toUpperCase(); changed(); } } })),
+        h("button", { type: "button", class: "btn-sm", text: "Modifier", onclick: () => { const v = prompt("Référence du chargement", S.ref); if (v && v.trim()) { S.ref = v.trim().toUpperCase(); changed(); saveSession(true); } } })),
       h("ol", { class: "pc-steps", style: "margin-top:14px" }, ...STEPS.map((s, i) => {
         if (s.note) {
           const num = h("span", { class: "pc-num", "aria-hidden": "true", html: S.note.trim() ? ICON.check : String(i + 1) });
           const ta = h("textarea", { "aria-label": s.t, placeholder: "Commentaire (palette abîmée, manquant…)", oninput: (e) => {
             S.note = e.target.value; S.version++; S.help = false;
             li.classList.toggle("done", !!S.note.trim()); num.innerHTML = S.note.trim() ? ICON.check : String(i + 1);
+            S.sent = false; saveSession();
             clearTimeout(changed.t); changed.t = setTimeout(() => buildPdf().catch(() => {}), 800);
           } });
           ta.value = S.note;
@@ -2378,7 +2430,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
           h("button", { type: "button", class: "btn-yellow pc-cam", "aria-label": "Photo : " + s.t, html: ICON.cam, onclick: () => pick(s.k) }),
           h("div", { class: "pc-thumbs" }, ...list.map((p) => h("div", { class: "pc-thumb" + (p.busy ? " busy" : "") },
             h("img", { src: p.url, alt: "" }),
-            p.busy ? null : h("button", { type: "button", "aria-label": "Retirer la photo", html: ICON.x, onclick: () => { S.photos[s.k] = list.filter((x) => x !== p); changed(); } }))))
+            p.busy ? null : h("button", { type: "button", "aria-label": "Retirer la photo", html: ICON.x, onclick: () => { if (!confirm("Retirer cette photo ?")) return; S.photos[s.k] = list.filter((x) => x !== p); kvDel("p:" + p.id).catch(() => {}); changed(); saveSession(true); } }))))
         );
       })),
       S.help ? h("div", { class: "panel pc-after", style: "margin-top:14px" },
@@ -2408,6 +2460,7 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
     const v = $("pcRefIn").value.trim().toUpperCase();
     if (!v) { $("pcRefIn").focus(); return; }
     S.ref = v;
+    saveSession(true);
     document.body.classList.add("pc-on");
     $("pcTitle").hidden = false; $("pcHead").hidden = false; $("pcSection").hidden = false;
     render(); window.scrollTo(0, 0);
@@ -2415,6 +2468,19 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   $("pcStartBtn").onclick = start;
   $("pcRefIn").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); start(); } });
   $("pcBack").onclick = () => exit(true);
+
+  // Reprise automatique d’un chargement non terminé (rechargement, appli fermée, téléphone redémarré…)
+  restore().then((ok) => {
+    if (!ok) return;
+    document.body.classList.add("pc-on");
+    $("pcTitle").hidden = false; $("pcHead").hidden = false; $("pcSection").hidden = false;
+    render(); window.scrollTo(0, 0);
+    toast("Chargement " + S.ref + " repris : " + count() + " photo" + (count() > 1 ? "s" : "") + " retrouvée" + (count() > 1 ? "s" : "") + ".");
+  });
+  // Avertissement avant de quitter la page avec des photos non envoyées
+  window.addEventListener("beforeunload", (e) => {
+    if (S.ref && count() && !S.sent && !S.help) { e.preventDefault(); e.returnValue = ""; }
+  });
 })();
 </script>
 </body>
